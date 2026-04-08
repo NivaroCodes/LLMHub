@@ -1,6 +1,10 @@
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI
-from app.api.endpoints import router as chat
+
+load_dotenv()
+
+from app.api.endpoints import router as chat  # noqa: E402
 
 
 app = FastAPI()
