@@ -6,3 +6,4 @@ pydantic
 python-dotenv
 google-genai
 typer
+redis

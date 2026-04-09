@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from datetime import datetime, timezone
 from app.dependencies import rate_limiter
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_services import LLMService
-
 
 router = APIRouter()
 llm_service = LLMService()
@@ -19,16 +18,31 @@ async def chat(
 
 APP_START_TIME = datetime.now(timezone.utc)
 
+
 @router.get("/health")
-async def health_checker():
+async def health_checker(request: Request):
     current_time = datetime.now(timezone.utc)
     uptime = current_time - APP_START_TIME
 
-    return {
-        "status": "ok",
+    redis_client = request.app.state.redis
+    try:
+        await redis_client.ping()
+        status = "ok"
+        redis_status = "available"
+        reason = None
+    except Exception as e:
+        status = "degraded"
+        redis_status = "unavailable"
+        reason = str(e)
+
+    health_status = {
+        "status": status,
+        "redis": redis_status,
         "timestamp": current_time.isoformat(),
         "uptime": str(uptime).split(".")[0],
         "start_time": APP_START_TIME.isoformat(),
     }
+    if reason is not None:
+        health_status["reason"] = reason
 
-
+    return health_status
