@@ -1,53 +1,77 @@
-# LLMHub
+<p align="center">
+  <img src="assets/LLMHub-icon.png" width="1000" />
+</p>
 
-LLMHub is a lightweight gateway for routing chat requests between providers.
-It exposes a simple HTTP API and a CLI so you can use the same core for local
-experiments, developer workflows, and end-user apps.
+<h1 align="center">LLMHub</h1>
+
+<p align="center">
+  Lightweight gateway for routing LLM requests across providers.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.9+-blue" />
+  <img src="https://img.shields.io/badge/fastapi-backend-green" />
+  <img src="https://img.shields.io/badge/license-MIT-black" />
+</p>
+
+---
+
+## Overview
+
+**LLMHub** is a lightweight infrastructure layer that routes chat requests between multiple LLM providers.
+
+It provides a **single API and CLI interface** to:
+
+* switch between providers
+* optimize cost and latency
+* run locally or in production
+
+Designed for developers building AI-powered apps without vendor lock-in.
+
+---
 
 ## Features
 
-- FastAPI backend with a single `/chat` endpoint.
-- Provider routing: Gemini and Ollama (OpenAI optional).
-- Rule-based or agent-based routing for `preferred_provider="auto"`.
-- CLI for quick local usage.
-- `.env` configuration with safe defaults.
+* **Single `/chat` endpoint** powered by FastAPI
+* **Multi-provider routing** (Gemini, Ollama, optional OpenAI)
+* **Auto routing** via rules or LLM-based agent
+* **CLI for local workflows**
+* **.env-based configuration**
+* **Fallback handling & latency tracking**
+
+---
 
 ## Quick Start
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
+### 1. Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Copy `.env.example` to `.env` and fill in keys.
-4. Run the server:
+### 2. Configure
+
+```bash
+cp .env.example .env
+```
+
+Fill required keys.
+
+### 3. Run server
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Open the docs at `http://127.0.0.1:8000/docs`.
+Docs available at:
 
-## Configuration
+```
+http://127.0.0.1:8000/docs
+```
 
-Environment variables (see `.env.example`):
+---
 
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL` (default: `gemini-3-flash-preview`)
-- `OLLAMA_BASE_URL` (default: `http://localhost:11434`)
-- `OLLAMA_MODEL` (default: `llama3:8b`)
-- `ROUTER_MODE` (`rules` or `agent`)
-- `ROUTER_MODEL` (model used by the router in agent mode)
-
-Note: `.env` is ignored by git and must stay private.
-
-## API
-
-### `POST /chat`
-
-Request body:
+## Example Request
 
 ```json
 {
@@ -58,22 +82,22 @@ Request body:
 }
 ```
 
-Response body:
+## Example Response
 
 ```json
 {
   "answer": "string",
-  "provider": "gemini|ollama",
+  "provider": "gemini",
   "model": "string",
-  "latency_ms": 0,
+  "latency_ms": 120,
   "request_id": "uuid",
   "fallback_used": false
 }
 ```
 
-## CLI
+---
 
-The CLI is provided via `llmhub` after an editable install.
+## CLI
 
 Install:
 
@@ -81,27 +105,69 @@ Install:
 pip install -e .
 ```
 
-Commands:
+Usage:
 
 ```bash
 llmhub chat "Hello" --provider auto
-llmhub chat "Hello" --provider gemini --json
-llmhub serve --host 0.0.0.0 --port 8000 --reload
+llmhub serve --reload
 ```
+
+---
 
 ## Routing Modes
 
-`ROUTER_MODE=rules`:
-Simple heuristics based on message length and keywords.
+### `rules`
 
-`ROUTER_MODE=agent`:
-Gemini is used as a router model to decide `gemini` vs `ollama`.
-This adds latency and consumes tokens for routing.
+* Fast
+* Deterministic
+* Based on heuristics
+
+### `agent`
+
+* Uses LLM (Gemini) for routing decisions
+* More flexible, but adds latency and cost
+
+---
+
+## Configuration
+
+Environment variables:
+
+* `GEMINI_API_KEY`
+* `GEMINI_MODEL`
+* `OLLAMA_BASE_URL`
+* `OLLAMA_MODEL`
+* `ROUTER_MODE`
+* `ROUTER_MODEL`
+
+> `.env` must not be committed
+
+---
 
 ## Troubleshooting
 
-- If Ollama replies with 404, the model is not downloaded:
-  `ollama pull llama3:8b`
-- If Gemini returns 404, the model name is not available for your project.
-  Use the Gemini API `models.list` to see what is enabled for your key.
+* **Ollama 404**
 
+  ```bash
+  ollama pull llama3:8b
+  ```
+
+* **Gemini 404**
+
+  * Check available models via API
+
+---
+
+## Roadmap
+
+* [ ] OpenAI provider stabilization
+* [ ] Request caching
+* [ ] Metrics dashboard
+* [ ] Rate limiting
+* [ ] Plugin system
+
+---
+
+## License
+
+MIT
