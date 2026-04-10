@@ -13,3 +13,4 @@ class ChatResponse(BaseModel):
 	latency_ms: int
 	request_id: str
 	fallback_used: bool
+	cached: bool

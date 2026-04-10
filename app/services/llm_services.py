@@ -9,6 +9,7 @@ from app.providers.gemini_client import GeminiProvider
 from app.providers.openai_client import OpenAIProvider
 from app.providers.ollama_client import OllamaProvider
 from app.schemas.chat import ChatRequest
+from app.services.cache_service import get_cached_response, set_cached_response
 
 class LLMService:
 	def __init__(self):
@@ -91,9 +92,29 @@ class LLMService:
 
 		if provider_name == "gemini":
 			model_used = self.gemini_model
-			answer = await provider.get_completion(user_text, model=model_used)
 		else:
 			model_used = self.ollama_model
+
+		try:
+			cached_response = await get_cached_response(user_text, provider_name, model_used)
+		except Exception:
+			cached_response = None
+
+		if cached_response is not None:
+			latency_ms = int((time.monotonic() - start) * 1000)
+			return {
+				"answer": cached_response["answer"],
+				"provider": cached_response["provider"],
+				"model": cached_response["model"],
+				"latency_ms": latency_ms,
+				"request_id": str(uuid.uuid4()),
+				"fallback_used": cached_response["fallback_used"],
+				"cached": True,
+			}
+
+		if provider_name == "gemini":
+			answer = await provider.get_completion(user_text, model=model_used)
+		else:
 			try:
 				answer = await provider.get_completion(user_text, model=model_used, timeout_s=timeout_s)
 			except httpx.HTTPStatusError as exc:
@@ -106,6 +127,17 @@ class LLMService:
 
 		latency_ms = int((time.monotonic() - start) * 1000)
 
+		response_payload = {
+			"answer": answer,
+			"provider": provider_name,
+			"model": model_used,
+			"fallback_used": fallback_used,
+		}
+		try:
+			await set_cached_response(user_text, provider_name, model_used, response_payload)
+		except Exception:
+			pass
+
 		return {
 			"answer": answer,
 			"provider": provider_name,
@@ -113,4 +145,5 @@ class LLMService:
 			"latency_ms": latency_ms,
 			"request_id": str(uuid.uuid4()),
 			"fallback_used": fallback_used,
+			"cached": False,
 		}
