@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sys
 
 import typer
 from dotenv import load_dotenv
@@ -12,6 +13,18 @@ from app.schemas.chat import ChatRequest  # noqa: E402
 app = typer.Typer(help="LLMHub — CLI для взаимодействия с LLM-провайдерами")
 
 
+def _run(coro):
+    """Run a coroutine, using SelectorEventLoop on Windows (asyncpg requirement)."""
+    if sys.platform == "win32":
+        loop = asyncio.SelectorEventLoop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    return asyncio.run(coro)
+
+
 @app.command()
 def chat(
     message: str = typer.Argument(..., help="Сообщение для LLM"),
@@ -20,7 +33,7 @@ def chat(
 ):
     service = LLMService()
     request = ChatRequest(message=message, preferred_provider=provider)
-    result = asyncio.run(service.get_response(request))
+    result = _run(service.get_response(request))
 
     if json_output:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
@@ -37,25 +50,36 @@ def serve(
     reload: bool = typer.Option(False, "--reload"),
 ):
     import uvicorn
-    uvicorn.run("app.main:app", host=host, port=port, reload=reload)
+
+    if sys.platform == "win32":
+        loop = asyncio.SelectorEventLoop()
+        asyncio.set_event_loop(loop)
+        config = uvicorn.Config("app.main:app", host=host, port=port, reload=reload)
+        server = uvicorn.Server(config)
+        try:
+            loop.run_until_complete(server.serve())
+        finally:
+            loop.close()
+    else:
+        uvicorn.run("app.main:app", host=host, port=port, reload=reload)
 
 
 @app.command()
 def providers():
     service = LLMService()
     rows = [
-        ("openai", service.openai is not None, service.openai_model),
-        ("gemini", service.gemini is not None, service.gemini_model),
-        ("ollama", service.ollama is not None, service.ollama_model),
+        ("openai",     service.openai     is not None, service.openai_model),
+        ("gemini",     service.gemini     is not None, service.gemini_model),
+        ("openrouter", service.openrouter is not None, service.openrouter_model),
+        ("ollama",     service.ollama     is not None, service.ollama_model),
     ]
-    typer.echo(f"{'PROVIDER':<10} {'STATUS':<12} {'MODEL'}")
-    typer.echo("-" * 40)
+    typer.echo(f"{'PROVIDER':<12} {'STATUS':<12} {'MODEL'}")
+    typer.echo("-" * 44)
     for name, available, model in rows:
         status = typer.style("available", fg=typer.colors.GREEN) if available else typer.style("unavailable", fg=typer.colors.RED)
-        typer.echo(f"{name:<10} {status:<21} {model}")
+        typer.echo(f"{name:<12} {status:<21} {model}")
     typer.echo()
     typer.echo(f"Router mode: {service.router_mode}")
-
 
 
 if __name__ == "__main__":

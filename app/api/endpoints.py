@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 from datetime import datetime, timezone
+from app.db.database import get_stats
 from app.dependencies import rate_limiter
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_services import LLMService
@@ -46,3 +47,8 @@ async def health_checker(request: Request):
         health_status["reason"] = reason
 
     return health_status
+
+
+@router.get("/stats")
+async def stats():
+    return await get_stats()

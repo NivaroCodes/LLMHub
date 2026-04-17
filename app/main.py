@@ -4,6 +4,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from app.clients.redis_client import close_redis, init_redis
+from app.db.database import close_db, init_db
 
 load_dotenv()
 
@@ -12,6 +13,9 @@ from app.api.endpoints import router as chat
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_db()
+    print("SQLite database initialized")
+
     app.state.redis = await init_redis()
     print("Redis client initialized")
 
@@ -19,6 +23,9 @@ async def lifespan(app: FastAPI):
 
     await close_redis()
     print("Redis client closed")
+
+    await close_db()
+    print("PostgreSQL pool closed")
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(chat)
