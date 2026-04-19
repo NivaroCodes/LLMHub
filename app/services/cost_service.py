@@ -1,5 +1,3 @@
-# Pricing per million tokens (input_usd, output_usd)
-# Sources: provider pricing pages, approximate as of 2025
 _PRICING: dict[str, dict[str, tuple[float, float]]] = {
     "gemini": {
         "gemini-2.0-flash":          (0.075,  0.30),

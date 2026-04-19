@@ -1,4 +1,3 @@
-"""Unit tests for cache key generation (pure logic, no Redis needed)."""
 from app.services.cache_service import build_cache_key
 
 
