@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, Request
+import time
 from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request
+
 from app.db.database import get_stats
 from app.dependencies import rate_limiter
+from app.metrics import metrics_response, record_chat_metrics
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_services import LLMService
 
@@ -14,11 +17,58 @@ async def chat(
     payload: ChatRequest,
     limit: dict = Depends(rate_limiter),
 ):
-    response = await llm_service.get_response(payload)
+    try:
+        response = await llm_service.get_response(payload)
+    except HTTPException as exc:
+        record_chat_metrics(
+            provider="unknown",
+            status="error",
+            cached=False,
+            fallback_used=False,
+            latency_ms=0,
+        )
+        raise exc
+
+    record_chat_metrics(
+        provider=response["provider"],
+        status="ok",
+        cached=response["cached"],
+        fallback_used=response["fallback_used"],
+        latency_ms=response["latency_ms"],
+    )
     return response
 
 APP_START_TIME = datetime.now(timezone.utc)
 
+@router.get("/metrics")
+async def metrics():
+    return metrics_response()
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start_time = time.perf_counter()
+
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception:
+        status_code = 500
+        raise
+    finally:
+        duration = time.perf_counter() - start_time
+
+        method = request.method
+        endpoint = request.scope.get("route")
+
+        REQUESTS_TOTAL.labels(method, endpoint).inc()
+
+        if status_code >= 400:
+            ERRORS_TOTAL.labels(method, endpoint, str(status_code)).inc()
+
+        LATENCY.labels(method, endpoint).observe(duration)
+
+    return response
 
 @router.get("/health")
 async def health_checker(request: Request):
