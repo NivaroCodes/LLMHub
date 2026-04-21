@@ -1,7 +1,7 @@
-import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app.core.canonical import CanonicalChatRequest
 from app.db.database import get_stats
 from app.dependencies import rate_limiter
 from app.metrics import metrics_response, record_chat_metrics
@@ -12,13 +12,24 @@ router = APIRouter()
 llm_service = LLMService()
 
 
+def legacy_to_canonical(payload: ChatRequest) -> CanonicalChatRequest:
+    return CanonicalChatRequest.from_legacy_chat(payload)
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     payload: ChatRequest,
+    request: Request,
     limit: dict = Depends(rate_limiter),
 ):
+    business_type = request.headers.get("x-business-type")
+    business_name = request.headers.get("x-business-name", "")
+    metadata = {}
+    if business_type:
+        metadata = {"business_type": business_type, "business_name": business_name}
+    canonical = legacy_to_canonical(payload).model_copy(update={"metadata": metadata})
     try:
-        response = await llm_service.get_response(payload)
+        response = await llm_service.get_response(canonical)
     except HTTPException as exc:
         record_chat_metrics(
             provider="unknown",
@@ -44,31 +55,6 @@ APP_START_TIME = datetime.now(timezone.utc)
 async def metrics():
     return metrics_response()
 
-
-@app.middleware("http")
-async def metrics_middleware(request: Request, call_next):
-    start_time = time.perf_counter()
-
-    try:
-        response = await call_next(request)
-        status_code = response.status_code
-    except Exception:
-        status_code = 500
-        raise
-    finally:
-        duration = time.perf_counter() - start_time
-
-        method = request.method
-        endpoint = request.scope.get("route")
-
-        REQUESTS_TOTAL.labels(method, endpoint).inc()
-
-        if status_code >= 400:
-            ERRORS_TOTAL.labels(method, endpoint, str(status_code)).inc()
-
-        LATENCY.labels(method, endpoint).observe(duration)
-
-    return response
 
 @router.get("/health")
 async def health_checker(request: Request):

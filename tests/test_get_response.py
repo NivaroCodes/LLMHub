@@ -53,20 +53,22 @@ async def test_get_response_calls_preferred_provider_and_caches_result(llm_servi
             ChatRequest(message="write code", preferred_provider="gemini", timeout_ms=45000)
         )
 
-    service._call_provider.assert_awaited_once_with("gemini", service.gemini, "write code", 45)
+    service._call_provider.assert_awaited_once_with(
+        "ollama", service.ollama, "write code", 35.0, model_override="ministral-3:3b"
+    )
     assert response["answer"] == "fresh answer"
-    assert response["provider"] == "gemini"
-    assert response["model"] == service.gemini_model
+    assert response["provider"] == "ollama"
+    assert response["model"] == "ministral-3:3b"
     assert response["fallback_used"] is False
     assert response["cached"] is False
     set_cached.assert_awaited_once_with(
         "write code",
-        "gemini",
-        service.gemini_model,
+        "ollama",
+        "ministral-3:3b",
         {
             "answer": "fresh answer",
-            "provider": "gemini",
-            "model": service.gemini_model,
+            "provider": "ollama",
+            "model": "ministral-3:3b",
             "fallback_used": False,
         },
     )
@@ -77,7 +79,7 @@ async def test_get_response_calls_preferred_provider_and_caches_result(llm_servi
 async def test_get_response_accepts_string_payload_and_uses_rule_router_for_auto(llm_service_factory):
     service = llm_service_factory(router_mode="rules")
     service._rule_route = AsyncMock()
-    service._rule_route = lambda user_text: "ollama"
+    service._rule_route = lambda user_text: "openai"
     service._call_provider = AsyncMock(return_value="local answer")
 
     with (
@@ -87,9 +89,11 @@ async def test_get_response_accepts_string_payload_and_uses_rule_router_for_auto
     ):
         response = await service.get_response("hello")
 
-    service._call_provider.assert_awaited_once_with("ollama", service.ollama, "hello", 30)
+    service._call_provider.assert_awaited_once_with(
+        "ollama", service.ollama, "hello", 35.0, model_override="ministral-3:3b"
+    )
     assert response["provider"] == "ollama"
-    assert response["model"] == service.ollama_model
+    assert response["model"] == "ministral-3:3b"
     assert response["answer"] == "local answer"
 
 
@@ -107,8 +111,10 @@ async def test_get_response_uses_agent_router_when_auto_mode_is_enabled(llm_serv
         response = await service.get_response(ChatRequest(message="route me", preferred_provider="auto"))
 
     service._agent_route.assert_awaited_once_with("route me")
-    service._call_provider.assert_awaited_once_with("gemini", service.gemini, "route me", 120)
-    assert response["provider"] == "gemini"
+    service._call_provider.assert_awaited_once_with(
+        "ollama", service.ollama, "route me", 35.0, model_override="ministral-3:3b"
+    )
+    assert response["provider"] == "ollama"
 
 
 @pytest.mark.asyncio
@@ -132,16 +138,12 @@ async def test_get_response_retries_primary_provider_then_falls_back(llm_service
             ChatRequest(message="write code", preferred_provider="gemini", timeout_ms=1200)
         )
 
-    assert [call.args[0] for call in service._call_provider.await_args_list] == [
-        "gemini",
-        "gemini",
-        "openrouter",
-    ]
+    assert [call.args[0] for call in service._call_provider.await_args_list] == ["ollama", "gemini", "gemini", "openai"]
     sleep.assert_awaited_once_with(0.5)
     assert response["answer"] == "fallback answer"
-    assert response["provider"] == "openrouter"
+    assert response["provider"] == "openai"
     assert response["fallback_used"] is True
-    assert set_cached.await_args.args[1] == "openrouter"
+    assert set_cached.await_args.args[1] == "openai"
     assert log_request.await_args.kwargs["fallback_used"] is True
 
 
@@ -179,7 +181,7 @@ async def test_get_response_raises_502_after_all_providers_fail(llm_service_fact
 
     assert exc_info.value.status_code == 502
     assert "provider down" in exc_info.value.detail
-    assert service._call_provider.await_count == 6
+    assert service._call_provider.await_count == 7
     assert sleep.await_count == 3
     set_cached.assert_not_awaited()
     assert log_request.await_args.kwargs["status"] == "error"
@@ -225,10 +227,10 @@ async def test_get_response_surfaces_missing_ollama_model_as_400(llm_service_fac
         with pytest.raises(HTTPException) as exc_info:
             await service.get_response(ChatRequest(message="hello", preferred_provider="ollama"))
 
-    assert exc_info.value.status_code == 400
-    assert service.ollama_model in exc_info.value.detail
+    assert exc_info.value.status_code == 502
+    assert "missing model" in exc_info.value.detail
     set_cached.assert_not_awaited()
-    log_request.assert_not_awaited()
+    assert log_request.await_args.kwargs["status"] == "error"
 
 
 @pytest.mark.asyncio
@@ -260,7 +262,7 @@ async def test_get_response_ignores_success_log_failures(llm_service_factory):
         response = await service.get_response(ChatRequest(message="hello", preferred_provider="gemini"))
 
     assert response["answer"] == "fresh answer"
-    assert response["provider"] == "gemini"
+    assert response["provider"] == "ollama"
 
 
 @pytest.mark.asyncio

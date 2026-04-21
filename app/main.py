@@ -9,6 +9,7 @@ from app.db.database import close_db, init_db
 load_dotenv()
 
 from app.api.endpoints import router as chat
+from app.api.openai_endpoints import router as openai_compatible
 
 
 @asynccontextmanager
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(chat)
+app.include_router(openai_compatible)
 
 
 @app.get("/hi")
