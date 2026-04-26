@@ -23,7 +23,7 @@ def choose_route(
     *,
     local_model: str = "local_llama3_8b",
     gemini_model: str = "gemini-1.5-flash",
-    default_model: str = "gpt-4o-mini",
+    default_model: str = "openai/gpt-4o-mini",
 ) -> RouteDecision:
     normalized = _normalize(prompt)
     is_short = len(normalized) < 100
@@ -43,7 +43,7 @@ def choose_route(
             route_reason="analysis_or_complaint_keyword",
         )
     return RouteDecision(
-        provider="openai",
+        provider="openrouter",
         model=default_model,
         route_reason="default_fallback",
     )

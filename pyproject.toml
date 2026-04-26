@@ -22,3 +22,6 @@ llmhub = "cli:app"
 [tool.setuptools]
 packages = ["app"]
 py-modules = ["cli"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

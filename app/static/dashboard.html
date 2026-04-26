@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LLMHub Monitoring</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <div class="aurora aurora-left"></div>
+  <div class="aurora aurora-right"></div>
+
+  <main class="layout">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">LLMHub Operations</p>
+        <h1>Monitoring Center</h1>
+        <p class="subtitle">Техническая телеметрия для команды и бизнес-KPI в одном экране.</p>
+      </div>
+      <div class="controls">
+        <label for="window">Окно:</label>
+        <select id="window">
+          <option value="30">30 мин</option>
+          <option value="60" selected>1 час</option>
+          <option value="180">3 часа</option>
+          <option value="720">12 часов</option>
+          <option value="1440">24 часа</option>
+        </select>
+        <button id="refresh">Обновить</button>
+      </div>
+    </section>
+
+    <section class="cards" id="kpi-cards">
+      <article class="card"><h3>Total Requests</h3><p id="kpi-total">-</p></article>
+      <article class="card"><h3>Success Rate</h3><p id="kpi-success">-</p></article>
+      <article class="card"><h3>P95 Latency</h3><p id="kpi-p95">-</p></article>
+      <article class="card"><h3>Cache Hit Rate</h3><p id="kpi-cache">-</p></article>
+      <article class="card"><h3>Fallback Rate</h3><p id="kpi-fallback">-</p></article>
+      <article class="card"><h3>Window Cost</h3><p id="kpi-cost">-</p></article>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <h2>Traffic & Reliability</h2>
+        <p id="updated-at">Обновляется...</p>
+      </div>
+      <div id="bars" class="bars"></div>
+      <div class="legend">
+        <span><i class="dot requests"></i> Requests</span>
+        <span><i class="dot errors"></i> Errors</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <h2>Providers</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Requests</th>
+              <th>Errors</th>
+              <th>Avg Latency</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody id="providers-table">
+            <tr><td colspan="5">Загрузка...</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <h2>Recent Failures</h2>
+        <ul id="failures-list" class="failures">
+          <li>Загрузка...</li>
+        </ul>
+      </section>
+    </section>
+  </main>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

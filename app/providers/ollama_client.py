@@ -14,6 +14,10 @@ class OllamaProvider(BaseChatProvider):
     def __init__(self, base_url: str, default_model: str = "llama3"):
         self.base_url = base_url.rstrip("/")
         self.default_model = default_model
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=0.5, read=35.0, write=10.0, pool=1.0),
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
 
     @staticmethod
     def _ollama_payload_from_messages(request: CanonicalChatRequest, model: str) -> dict:
@@ -38,10 +42,9 @@ class OllamaProvider(BaseChatProvider):
         payload["stream"] = False
         payload.update(kwargs)
         timeout = float(timeout_s) if timeout_s is not None else 30.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(f"{self.base_url}/api/generate", json=payload)
-            response.raise_for_status()
-            return response.json().get("response", "")
+        response = await self._client.post(f"{self.base_url}/api/generate", json=payload, timeout=timeout)
+        response.raise_for_status()
+        return response.json().get("response", "")
 
     async def stream(
         self, request: CanonicalChatRequest, model: str | None = None, **kwargs
@@ -51,18 +54,20 @@ class OllamaProvider(BaseChatProvider):
         payload["stream"] = True
         payload.update(kwargs)
         timeout = float(timeout_s) if timeout_s is not None else 60.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", f"{self.base_url}/api/generate", json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    data = json.loads(line)
-                    token = data.get("response")
-                    if token:
-                        yield token
-                    if data.get("done"):
-                        break
+        async with self._client.stream("POST", f"{self.base_url}/api/generate", json=payload, timeout=timeout) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                data = json.loads(line)
+                token = data.get("response")
+                if token:
+                    yield token
+                if data.get("done"):
+                    break
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
     async def get_completion(self, prompt: str, model: str | None = None, **kwargs) -> str:
         request = CanonicalChatRequest.from_text(prompt)

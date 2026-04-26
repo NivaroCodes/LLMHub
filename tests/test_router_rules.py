@@ -51,10 +51,10 @@ def test_complaint_keyword_routes_to_gemini():
     assert decision.route_reason
 
 
-def test_default_routes_to_openai_when_no_keywords_match():
+def test_default_routes_to_openrouter_when_no_keywords_match():
     decision = choose_route("Привет, расскажи про вашу компанию")
-    assert decision.provider == "openai"
-    assert decision.model == "gpt-4o-mini"
+    assert decision.provider == "openrouter"
+    assert decision.model == "openai/gpt-4o-mini"
     assert decision.route_reason
 
 

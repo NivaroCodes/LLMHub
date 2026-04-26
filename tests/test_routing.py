@@ -5,20 +5,20 @@ class TestRuleRoute:
     def test_analysis_keyword_routes_to_gemini(self, llm_service):
         assert llm_service._rule_route("сравни два варианта") == "gemini"
 
-    def test_default_routes_to_openai(self, llm_service):
-        assert llm_service._rule_route("Hello, how are you?") == "openai"
+    def test_default_routes_to_openrouter(self, llm_service):
+        assert llm_service._rule_route("Hello, how are you?") == "openrouter"
 
 
 class TestProviderChain:
     def test_openai_preference_preserves_full_fallback_order(self, llm_service):
         chain = llm_service._get_provider_chain("openai")
 
-        assert [name for name, _ in chain] == ["openai", "openrouter", "gemini", "ollama"]
+        assert [name for name, _ in chain] == ["openrouter", "openai", "gemini", "ollama"]
 
     def test_openrouter_preference_preserves_its_fallback_order(self, llm_service):
         chain = llm_service._get_provider_chain("openrouter")
 
-        assert [name for name, _ in chain] == ["openai", "openrouter", "gemini", "ollama"]
+        assert [name for name, _ in chain] == ["openrouter", "openai", "gemini", "ollama"]
 
     def test_ollama_preference_keeps_local_first_then_gemini(self, llm_service):
         chain = llm_service._get_provider_chain("ollama")
@@ -29,6 +29,11 @@ class TestProviderChain:
         chain = llm_service._get_provider_chain("auto")
 
         assert [name for name, _ in chain] == ["ollama", "gemini", "openai", "openrouter"]
+
+    def test_auto_low_cost_fallback_priority_prefers_openrouter_after_local(self, llm_service):
+        chain = llm_service._prioritize_auto_fallbacks(llm_service._get_provider_chain("gemini"))
+
+        assert [name for name, _ in chain] == ["ollama", "openrouter", "gemini", "openai"]
 
     def test_chain_skips_providers_without_credentials(self, llm_service_factory):
         service = llm_service_factory(

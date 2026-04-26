@@ -16,3 +16,6 @@ class BaseChatProvider(ABC):
         self, request: CanonicalChatRequest, model: str | None = None, **kwargs
     ) -> AsyncIterator[str]:
         raise NotImplementedError
+
+    async def aclose(self) -> None:
+        return None

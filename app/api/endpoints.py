@@ -1,10 +1,11 @@
+import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.canonical import CanonicalChatRequest
 from app.db.database import get_stats
 from app.dependencies import rate_limiter
-from app.metrics import metrics_response, record_chat_metrics
+from app.metrics import metrics_response, record_chat_metrics, LATENCY_BREAKDOWN
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_services import LLMService
 
@@ -29,7 +30,9 @@ async def chat(
         metadata = {"business_type": business_type, "business_name": business_name}
     canonical = legacy_to_canonical(payload).model_copy(update={"metadata": metadata})
     try:
+        start_total = time.monotonic()
         response = await llm_service.get_response(canonical)
+        LATENCY_BREAKDOWN.labels(stage="endpoint_total").observe(time.monotonic() - start_total)
     except HTTPException as exc:
         record_chat_metrics(
             provider="unknown",

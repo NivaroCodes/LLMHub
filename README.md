@@ -38,6 +38,8 @@ Designed for developers building AI-powered apps without vendor lock-in.
 * **CLI for local workflows**
 * **.env-based configuration**
 * **Fallback handling & latency tracking**
+* **Business-friendly monitoring dashboard** at `/monitoring/dashboard`
+* **Operational monitoring APIs** (`/monitoring/overview`, `/monitoring/timeseries`, `/monitoring/failures`)
 
 ---
 
@@ -155,6 +157,23 @@ Environment variables:
 * **Gemini 404**
 
   * Check available models via API
+
+---
+
+## Monitoring
+
+Run service and open:
+
+```
+http://127.0.0.1:8000/monitoring/dashboard
+```
+
+Key endpoints:
+
+* `/metrics` - Prometheus scrape endpoint
+* `/monitoring/overview` - KPI snapshot for selected time window
+* `/monitoring/timeseries` - request/error/latency series for charting
+* `/monitoring/failures` - latest failed requests list
 
 ---
 
