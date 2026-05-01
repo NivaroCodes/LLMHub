@@ -1,13 +1,15 @@
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: llmhub-postgres
     environment:
       POSTGRES_DB: llmhub
       POSTGRES_USER: llmhub
       POSTGRES_PASSWORD: llmhub
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      # снаружи 5433 (localhost:5433), внутри docker-сети — 5432
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,25 +17,38 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    container_name: llmhub-redis
     ports:
       - "6379:6379"
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v2.54.1
+    container_name: llmhub-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     volumes:
+      # ВАЖНО: только относительный путь, и именно файл, не каталог
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheusdata:/prometheus
+    depends_on:
+      - postgres
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  redisdata:
+  prometheusdata:

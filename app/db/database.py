@@ -5,9 +5,15 @@ from typing import Any
 
 import asyncpg
 
+_DB_HOST = os.getenv("DB_HOST", "localhost")
+_DB_PORT = os.getenv("DB_PORT", "5433")
+_DB_USER = os.getenv("DB_USER", "llmhub")
+_DB_PASSWORD = os.getenv("DB_PASSWORD", "llmhub")
+_DB_NAME = os.getenv("DB_NAME", "llmhub")
+
 _DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://llmhub:llmhub@localhost:5433/llmhub"
+    f"postgresql://{_DB_USER}:{_DB_PASSWORD}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}",
 )
 
 _pool: asyncpg.Pool | None = None
