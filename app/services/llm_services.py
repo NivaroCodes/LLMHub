@@ -14,8 +14,6 @@ from fastapi import HTTPException
 from app.core.canonical import CanonicalChatRequest, CanonicalMessage
 from app.clients.redis_client import get_redis
 from app.core.config import (
-    CIRCUIT_BREAKER_THRESHOLD,
-    CIRCUIT_BREAKER_TIMEOUT,
     LATENCY_P95_THRESHOLD_MS,
     QUOTA_BREAKER_TIMEOUT,
 )
@@ -55,6 +53,22 @@ from app.services.cost_service import estimate_cost
 
 logger = logging.getLogger(__name__)
 
+_llm_service_singleton: "LLMService | None" = None
+
+
+def get_llm_service() -> "LLMService":
+    """Return the process-wide shared LLMService.
+
+    Spec: ONE provider per request, consistent in-process state. Previously
+    each endpoint module created its own LLMService, so disabled-provider
+    tracking and semaphores diverged across /chat and /v1/chat/completions.
+    """
+    global _llm_service_singleton
+    if _llm_service_singleton is None:
+        _llm_service_singleton = LLMService()
+    return _llm_service_singleton
+
+
 class LLMService:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -69,8 +83,10 @@ class LLMService:
         self.router_mode = os.getenv("ROUTER_MODE", "rules").strip().lower()
         self.router_model = os.getenv("ROUTER_MODEL", self.gemini_model)
         self.router_timeout_ms = int(os.getenv("ROUTER_TIMEOUT_MS", "2000"))
-        self.local_race_timeout_ms = int(os.getenv("LOCAL_RACE_TIMEOUT_MS", "3000"))
-        self.remote_race_timeout_ms = int(os.getenv("REMOTE_RACE_TIMEOUT_MS", "10000"))
+        # Per-provider per-call timeouts. Env var names kept for .env compat;
+        # the 'race' framing is obsolete (Slice 1 removed race hedging).
+        self.local_timeout_ms = int(os.getenv("LOCAL_RACE_TIMEOUT_MS", "3000"))
+        self.remote_timeout_ms = int(os.getenv("REMOTE_RACE_TIMEOUT_MS", "10000"))
         self.provider_stagger_ms = int(os.getenv("PROVIDER_STAGGER_MS", "250"))
         
         # Concurrency control per provider
@@ -99,6 +115,43 @@ class LLMService:
         self._last_system_state = "healthy"
         self._state_changed_at = time.time()
         self.testing_mode = os.getenv("PYTEST_CURRENT_TEST") is not None
+
+    def _emit_structured_log(
+        self,
+        *,
+        trace_id: str,
+        provider: str,
+        model: str,
+        stream: bool,
+        latency_ms: int,
+        status: str,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        error_code: str | None = None,
+        cached: bool = False,
+    ) -> None:
+        """Emit a single structured log entry per request.
+
+        Required fields (spec §Logging): trace_id, provider, model, stream,
+        latency_ms, status, tokens_input, tokens_output, error_code.
+        Stateless; safe to call on any terminal request path.
+        """
+        payload = {
+            "event": "llmhub.request",
+            "trace_id": trace_id,
+            "provider": provider,
+            "model": model,
+            "stream": stream,
+            "latency_ms": latency_ms,
+            "status": status,
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "error_code": error_code,
+            "cached": cached,
+        }
+        # extra=... lets downstream JSON formatters pick fields up; the rendered
+        # message is also readable as-is for stdout-based log pipelines.
+        logger.info("llmhub.request %s", payload, extra={"llmhub": payload})
 
     def _log_throttled(self, key: str, message: str, level=logging.WARNING, interval=10):
         now = time.time()
@@ -134,42 +187,48 @@ class LLMService:
 
         now = time.time()
         
-        # Build list of keys for MGET
+        # Build list of keys for MGET (Slice 2: no cb:*:state; scoring uses
+        # sliding-window error count + active bans + latency p95).
         keys = ["system:cooldown:until"]
         for p in providers:
-            keys.append(f"cb:{p}:state")
+            keys.append(f"ban:{p}:until")
             keys.append(f"quota:{p}:banned_until")
+            keys.append(f"error:{p}:count")
             keys.append(f"latency:{p}:p95")
-        
+
         values = await redis_client.mget(*keys)
         val_map = dict(zip(keys, values))
-        
+
         cooldown_until = val_map.get("system:cooldown:until")
         cooldown_active = cooldown_until is not None and float(cooldown_until) > now
-        
+
         unhealthy_count = 0
         for p in providers:
-            state_val = val_map.get(f"cb:{p}:state")
-            state = int(state_val) if state_val is not None else 0
-            
+            ban_until = val_map.get(f"ban:{p}:until")
+            is_banned = ban_until is not None and float(ban_until) > now
+
             quota_until = val_map.get(f"quota:{p}:banned_until")
             is_quota = quota_until is not None and float(quota_until) > now
-            
+
+            error_count_val = val_map.get(f"error:{p}:count")
+            error_count = int(error_count_val) if error_count_val is not None else 0
+
+            # Gradual scoring. No hard zero.
             score = 100
-            if state == 1: # OPEN
-                score = 0
+            if is_banned:
+                score = 10
             elif is_quota:
                 score = 10
-            elif state == 2: # HALF_OPEN
-                score = 50
-                
+            elif error_count >= 5:
+                score = max(0, 100 - error_count * 10)
+
             p95 = val_map.get(f"latency:{p}:p95")
             if p95 and float(p95) > LATENCY_P95_THRESHOLD_MS:
-                score = max(0, score - 30)
-                
+                score = max(0, score - 20)
+
             health_scores[p] = score
             PROVIDER_HEALTH_SCORE.labels(provider=p).set(score)
-            
+
             if score < 50:
                 unhealthy_count += 1
         
@@ -474,60 +533,40 @@ class LLMService:
             return True
 
         now = time.time()
-        
-        # 1. Check Circuit Breaker State
-        state_key = f"cb:{provider}:state"
-        state = await redis_client.get(state_key)
-        state = int(state) if state is not None else 0  # Default to CLOSED (0)
 
-        if state == 1:  # OPEN
-            banned_until = await redis_client.get(f"cb:{provider}:banned_until")
-            if banned_until and float(banned_until) > now:
-                self._log_throttled(f"hb_{provider}_open", f"[HEALTH] skipping {provider}: circuit open (banned until {banned_until})", interval=30)
-                CIRCUIT_STATE.labels(provider=provider).set(1)
-                PROVIDER_STATE.labels(provider=provider).set(-1)
-                return False
-            else:
-                # Transition to HALF_OPEN
-                logger.info("[HEALTH] %s moving to HALF_OPEN", provider)
-                await redis_client.set(state_key, 2)
-                state = 2
-
-        if state == 2:  # HALF_OPEN
-            # Allow one probe every 15 seconds
-            last_probe = await redis_client.get(f"cb:{provider}:last_probe")
-            if last_probe and (now - float(last_probe)) < 15:
-                PROVIDER_STATE.labels(provider=provider).set(0)
-                CIRCUIT_STATE.labels(provider=provider).set(2)
-                return False
-            
-            logger.info("[HEALTH] probing %s: circuit half-open", provider)
-            await redis_client.set(f"cb:{provider}:last_probe", now, ex=30)
-            PROVIDER_STATE.labels(provider=provider).set(0)
-            CIRCUIT_STATE.labels(provider=provider).set(2)
-            return True
-
-        # CLOSED State (0)
-        CIRCUIT_STATE.labels(provider=provider).set(0)
-
-        # 2. Check Rate Limit (Token Bucket)
-        if not await self._check_rate_limit(provider):
-            self._log_throttled(f"hb_{provider}_rate", f"[HEALTH] skipping {provider}: rate limited (token bucket)", interval=30)
-            # We return False but don't change CB state
-            PROVIDER_STATE.labels(provider=provider).set(0)
+        ban_until = await redis_client.get(f"ban:{provider}:until")
+        if ban_until and float(ban_until) > now:
+            self._log_throttled(
+                f"hb_{provider}_ban",
+                f"[HEALTH] {provider} skipped: short ban active",
+                interval=30,
+            )
+            PROVIDER_STATE.labels(provider=provider).set(-1)
             return False
 
-        # 3. Check Soft Quota
         quota_until = await redis_client.get(f"quota:{provider}:banned_until")
         if quota_until and float(quota_until) > now:
-            self._log_throttled(f"hb_{provider}_quota", f"[HEALTH] skipping {provider}: quota cooldown", interval=30)
+            self._log_throttled(
+                f"hb_{provider}_quota",
+                f"[HEALTH] {provider} skipped: quota cooldown",
+                interval=30,
+            )
             PROVIDER_STATE.labels(provider=provider).set(0)
             return False
 
-        # 4. Check Latency (P95)
+        error_count = await redis_client.get(f"error:{provider}:count")
+        if error_count and int(error_count) >= 10:
+            self._log_throttled(
+                f"hb_{provider}_errors",
+                f"[HEALTH] {provider} skipped: error_count={error_count}",
+                interval=30,
+            )
+            PROVIDER_STATE.labels(provider=provider).set(0)
+            return False
+
         p95 = await redis_client.get(f"latency:{provider}:p95")
         if p95 and float(p95) > LATENCY_P95_THRESHOLD_MS:
-            logger.info("[HEALTH] %s has high latency (%sms), deprioritizing", provider, p95)
+            # высокая latency — не блокируем, но метрику выставляем
             PROVIDER_STATE.labels(provider=provider).set(0)
             return True
 
@@ -535,13 +574,22 @@ class LLMService:
         return True
 
     async def record_provider_error(self, provider: str, error: Exception | None = None):
+        """Feed provider health state for the scoring router.
+
+        Slice 2 removed the circuit-breaker state machine. The router reads:
+          - quota:{provider}:banned_until   (upstream 429 backoff window)
+          - ban:{provider}:until            (short timeout cooldown)
+          - error:{provider}:count          (sliding 60s error counter)
+        No OPEN/HALF_OPEN/CLOSED transitions. Scores degrade gradually in
+        `_get_system_state`.
+        """
         redis_client = self._get_redis_safe()
         if redis_client is None:
             return
 
         error_str = str(error).lower()
         now = time.time()
-        
+
         # Classification
         is_429 = False
         if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 429:
@@ -550,94 +598,58 @@ class LLMService:
             is_429 = True
 
         is_timeout = isinstance(error, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or "timeout" in error_str
-        
-        is_hard = any(x in error_str for x in ["connection refused", "auth", "invalid_api_key", "500 internal server error"])
-        
-        state_key = f"cb:{provider}:state"
-        state = await redis_client.get(state_key)
-        state = int(state) if state is not None else 0
 
-        # Handle QUOTA_ERROR (429) -> Exponential Backoff
+        # 429 -> exponential quota backoff (unchanged; upstream-instructed, not CB)
         if is_429:
             key = f"quota:{provider}:backoff_level"
             level = await redis_client.incr(key)
             await redis_client.expire(key, 600)
-            
-            # exponential backoff: 30s * 2^(level-1) + jitter, CAP at 300s
+
             backoff_base = 30 * (2 ** (level - 1))
             backoff = min(300, backoff_base)
             jitter = backoff * 0.2 * (time.time() % 1)
             total_backoff = backoff + jitter
-            
+
             await redis_client.set(f"quota:{provider}:banned_until", now + total_backoff, ex=int(total_backoff))
             self._log_throttled(
-                f"quota_{provider}", 
+                f"quota_{provider}",
                 f"[QUOTA] {provider} 429 detected, level {level}, backoff {total_backoff:.1f}s"
             )
+            # Metric label reused for quota tracking (spec-allowed).
             CIRCUIT_OPEN_COUNT.labels(provider=provider, reason="429").inc()
             RETRY_BACKOFF_SECONDS.labels(provider=provider).inc(total_backoff)
-            
-            if state == 2: # HALF_OPEN
-                await redis_client.set(state_key, 1) # Back to OPEN
             return
 
-        # Handle TIMEOUT -> Short retry window (5-10s)
+        # Timeout -> short ban window so the router deprioritizes this provider briefly.
         if is_timeout:
             short_ban = 10
-            await redis_client.set(f"cb:{provider}:banned_until", now + short_ban, ex=short_ban)
-            self._log_throttled(f"timeout_{provider}", f"[TIMEOUT] {provider} timed out, short ban {short_ban}s")
-            # Also increment normal error counter but less aggressively
-            error_key = f"cb:{provider}:errors"
-            await redis_client.incrby(error_key, 1)
-            await redis_client.expire(error_key, 300)
+            await redis_client.set(f"ban:{provider}:until", now + short_ban, ex=short_ban)
+            self._log_throttled(
+                f"timeout_{provider}",
+                f"[TIMEOUT] {provider} timed out, short ban {short_ban}s"
+            )
             return
 
-        # Handle NETWORK_ERROR / HARD -> Circuit Breaker
-        error_key = f"cb:{provider}:errors"
-        increment = 2 if is_hard else 1
-        errors = await redis_client.incrby(error_key, increment)
-        await redis_client.expire(error_key, 300)
-
-        if state == 2: # HALF_OPEN
-            self._log_throttled(
-                f"circuit_{provider}_half_open_fail",
-                f"[CIRCUIT] {provider} failed in HALF_OPEN, moving back to OPEN"
-            )
-            await redis_client.set(state_key, 1)
-            await redis_client.set(f"cb:{provider}:banned_until", now + CIRCUIT_BREAKER_TIMEOUT, ex=CIRCUIT_BREAKER_TIMEOUT)
-            CIRCUIT_OPEN_COUNT.labels(provider=provider, reason="half_open_failure").inc()
-            return
-
-        if errors >= CIRCUIT_BREAKER_THRESHOLD:
-            self._log_throttled(
-                f"circuit_{provider}_open",
-                f"[CIRCUIT] {provider} threshold reached ({errors}), opening circuit"
-            )
-            await redis_client.set(state_key, 1) # OPEN
-            await redis_client.set(f"cb:{provider}:banned_until", now + CIRCUIT_BREAKER_TIMEOUT, ex=CIRCUIT_BREAKER_TIMEOUT)
-            await redis_client.delete(error_key)
-            CIRCUIT_OPEN_COUNT.labels(provider=provider, reason="threshold_reached").inc()
-            CIRCUIT_STATE.labels(provider=provider).set(1)
+        # Any other error -> sliding-window error counter (60s TTL).
+        error_key = f"error:{provider}:count"
+        await redis_client.incrby(error_key, 1)
+        await redis_client.expire(error_key, 60)
 
     async def record_provider_success(self, provider: str, latency_ms: float | None = None):
+        """Clear sliding-window error state and update latency p95.
+
+        Slice 2: no CB state transitions. Success clears the active quota ban
+        (server has accepted a request again) and the sliding error counter,
+        but does NOT reset `quota:*:backoff_level` — if 429s resume, backoff
+        must continue from the existing level, not reset to 1.
+        """
         redis_client = self._get_redis_safe()
         if redis_client is None:
             return
 
-        state_key = f"cb:{provider}:state"
-        state = await redis_client.get(state_key)
-        state = int(state) if state is not None else 0
-
-        if state == 2: # HALF_OPEN
-            logger.info("[CIRCUIT] %s recovered! Moving to CLOSED", provider)
-            await redis_client.set(state_key, 0) # CLOSED
-            CIRCUIT_STATE.labels(provider=provider).set(0)
-
-        # Clear errors on success - this is what makes it "Half-Open" recovery
-        await redis_client.delete(f"cb:{provider}:errors")
-        await redis_client.delete(f"cb:{provider}:banned_until")
+        # Success clears the active quota ban and the sliding-window error counter.
         await redis_client.delete(f"quota:{provider}:banned_until")
-        await redis_client.delete(f"quota:{provider}:backoff_level")
+        await redis_client.delete(f"error:{provider}:count")
 
         if latency_ms is not None:
             # Update p95 latency. Simplified: keep last 20 values in a list.
@@ -659,202 +671,12 @@ class LLMService:
         timeout_s: float,
     ) -> float:
         if provider_name == "ollama":
-            return min(timeout_s, self.local_race_timeout_ms / 1000.0)
-        return min(timeout_s, self.remote_race_timeout_ms / 1000.0)
+            return min(timeout_s, self.local_timeout_ms / 1000.0)
+        return min(timeout_s, self.remote_timeout_ms / 1000.0)
 
-    def _provider_start_delay(self, index: int, requested_provider: str) -> float:
-        if index == 0:
-            return 0.0
-        multiplier = 1.0 if requested_provider == "auto" else 1.5
-        return (self.provider_stagger_ms * multiplier * index) / 1000.0
-
-    async def _race_candidate(
-        self,
-        *,
-        provider_name: str,
-        provider: object,
-        user_text: str,
-        timeout_s: float,
-        delay_s: float,
-        model_override: str | None = None,
-    ) -> dict[str, Any]:
-        if delay_s > 0:
-            try:
-                await asyncio.sleep(delay_s)
-            except asyncio.CancelledError:
-                logger.info("[RACE] Candidate %s cancelled during delay", provider_name)
-                raise
-        started = time.monotonic()
-        logger.info("[RACE] Starting candidate: %s (timeout=%ss)", provider_name, timeout_s)
-        try:
-            answer = await self._call_provider(
-                provider_name,
-                provider,
-                user_text,
-                timeout_s,
-                model_override=model_override,
-            )
-            return {
-                "provider": provider_name,
-                "answer": answer,
-                "model": model_override or self._model_for(provider_name),
-                "latency_ms": int((time.monotonic() - started) * 1000),
-                "timeout_hit": False,
-            }
-        except asyncio.CancelledError:
-            latency = time.monotonic() - started
-            logger.info("[RACE] Candidate %s cancelled after %.2fs", provider_name, latency)
-            PROVIDER_LATENCY.labels(provider=provider_name, stage="cancelled").observe(latency)
-            raise
-        except Exception as exc:
-            latency = time.monotonic() - started
-            logger.warning("[RACE] Candidate %s failed after %.2fs: %s", provider_name, latency, exc)
-            return {
-                "provider": provider_name,
-                "error": exc,
-                "model": model_override or self._model_for(provider_name),
-                "latency_ms": int(latency * 1000),
-                "timeout_hit": isinstance(exc, TimeoutError),
-            }
-
-    async def _run_fastest_response_race(
-        self,
-        *,
-        chain: list[tuple[str, object]],
-        user_text: str,
-        requested_provider: str,
-        timeout_s: float,
-        deadline_s: float,
-        local_model: str,
-        use_local_fast_fallback: bool,
-        health_scores: dict[str, int]
-    ) -> tuple[dict[str, Any] | None, list[str], bool, Exception | None, str | None]:
-        candidates: list[tuple[str, object, float, float, str | None]] = []
-        
-        # Filter healthy providers using pre-fetched scores
-        for index, (provider_name, provider) in enumerate(chain):
-            score = health_scores.get(provider_name, 0)
-            if score < 50:
-                if requested_provider == provider_name:
-                    logger.info("[RACE] Using unhealthy but requested provider: %s", provider_name)
-                else:
-                    logger.warning("[RACE] Skipping unhealthy provider: %s (score %s)", provider_name, score)
-                    continue
-            
-            candidates.append(
-                (
-                    provider_name,
-                    provider,
-                    self._provider_timeout_budget(provider_name, requested_provider, timeout_s),
-                    self._provider_start_delay(len(candidates), requested_provider),
-                    local_model if use_local_fast_fallback and provider_name == "ollama" else None,
-                )
-            )
-
-        if not candidates:
-            logger.warning("[RACE] No healthy providers available for race")
-            return None, [], False, None, None
-
-        # Override stagger for race to be more aggressive
-        self.provider_stagger_ms = 100 
-
-        tasks: dict[asyncio.Task[dict[str, Any]], str] = {
-            asyncio.create_task(
-                self._race_candidate(
-                    provider_name=provider_name,
-                    provider=provider,
-                    user_text=user_text,
-                    timeout_s=provider_timeout_s,
-                    delay_s=delay_s,
-                    model_override=model_override,
-                )
-            ): provider_name
-            for provider_name, provider, provider_timeout_s, delay_s, model_override in candidates
-        }
-        provider_chain = [provider_name for provider_name, *_ in candidates]
-        timeout_hit = False
-        last_error: Exception | None = None
-        last_failed_provider: str | None = None
-
-        try:
-            while tasks:
-                # We want a winner as fast as possible.
-                # If we have any 'done' tasks, process them.
-                # If not, wait for any task to finish, but no longer than 0.1s to check deadline.
-                try:
-                    done, pending = await asyncio.wait(tasks.keys(), timeout=0.05, return_when=asyncio.FIRST_COMPLETED)
-                except Exception as e:
-                    logger.error("[RACE] asyncio.wait error: %s", e)
-                    break
-                
-                if not done:
-                    # Check if global deadline exceeded
-                    if time.monotonic() > deadline_s:
-                        logger.warning("[RACE] Global deadline exceeded")
-                        timeout_hit = True
-                        break
-                    
-                    # Optimization: If all currently running tasks are from providers we know are slow/failing
-                    # we could theoretically start more, but candidates are already all started.
-                    continue
-
-                for task in done:
-                    provider_name = tasks.pop(task)
-                    try:
-                        result = await task
-                    except Exception as e:
-                        logger.error("[RACE] Task for %s failed with exception: %s", provider_name, e)
-                        result = {"provider": provider_name, "error": e, "latency_ms": 0, "timeout_hit": False}
-
-                    if "answer" in result:
-                        # Winner found!
-                        logger.info("[RACE] Winner: %s in %sms (reason: fastest_response)", provider_name, result.get("latency_ms"))
-                        await self.record_provider_success(provider_name, result.get("latency_ms"))
-                        for pending_task in pending:
-                            pending_task.cancel()
-                        
-                        # We don't want to block the response while waiting for cancellations
-                        # But we should clear the tasks dict to avoid finally block waiting
-                        tasks.clear()
-                        # Run background cancellation cleanup
-                        asyncio.create_task(asyncio.gather(*pending, return_exceptions=True))
-                        return result, provider_chain, timeout_hit, last_error, last_failed_provider
-
-                    exc = result.get("error")
-                    last_error = exc
-                    last_failed_provider = provider_name
-                    timeout_hit = timeout_hit or result.get("timeout_hit", False)
-                    logger.info("[RACE] Provider %s failed: %s", provider_name, exc)
-
-                    if exc:
-                        await self.record_provider_error(provider_name, exc)
-
-                    if self._is_binary_policy_error(exc):
-                        self._disable_provider(provider_name, exc)
-                    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
-                        # Already recorded via record_provider_error above
-                        pass
-                    if (
-                        isinstance(exc, httpx.HTTPStatusError)
-                        and exc.response.status_code == 404
-                        and provider_name == "ollama"
-                        and requested_provider == "ollama"
-                    ):
-                        for pending_task in pending:
-                            pending_task.cancel()
-                        tasks.clear()
-                        model_name = self._model_for("ollama")
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Ollama model '{model_name}' not found. Run: ollama pull {model_name}",
-                        ) from exc
-        finally:
-            if tasks:
-                for t in tasks.keys():
-                    t.cancel()
-                await asyncio.gather(*tasks.keys(), return_exceptions=True)
-
-        return None, provider_chain, timeout_hit, last_error, last_failed_provider
+    # NOTE: _race_candidate, _run_fastest_response_race, and _provider_start_delay
+    # were removed. Architectural rule: NO race hedging. A single provider is
+    # selected up front; fallback is linear and only before a response starts.
 
     async def _call_provider(
         self,
@@ -1085,16 +907,15 @@ class LLMService:
 
     async def get_response(self, payload: CanonicalChatRequest | ChatRequest | str) -> dict:
         start = time.monotonic()
-        request_id = str(uuid.uuid4())
+        trace_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc)
 
         canonical = self._to_canonical(payload)
         user_text = canonical.user_text
-        
+
         # 1. System State & Cooldown (Control Plane First)
         status = await self._get_system_state()
         system_state = status["state"]
-        cooldown_active = status["cooldown"]
         health_scores = status["scores"]
 
         # 2. Static Intent Engine (Strict Priority)
@@ -1103,40 +924,52 @@ class LLMService:
                 latency_ms = int((time.monotonic() - start) * 1000)
                 FALLBACK_LEVEL_USED.labels(level="static_intent").inc()
                 resp = self._format_response_dict(
-                    static_answer, "static_intent", "baseline", latency_ms, request_id, 
+                    static_answer, "static_intent", "baseline", latency_ms, trace_id,
                     fallback_used=True, cached=False, route_reason="static_intent_match"
                 )
                 try:
                     await log_request(
-                        request_id=request_id, timestamp=timestamp, message=user_text,
+                        request_id=trace_id, timestamp=timestamp, message=user_text,
                         provider="static_intent", model="baseline", latency_ms=latency_ms,
                         cached=False, fallback_used=True, prompt_tokens=0, completion_tokens=0,
                         cost_usd=0.0, status="ok"
                     )
                 except Exception: pass
+                self._emit_structured_log(
+                    trace_id=trace_id, provider="static_intent", model="baseline",
+                    stream=False, latency_ms=latency_ms, status="success",
+                    tokens_input=0, tokens_output=0,
+                )
                 return resp
 
         # 3. LOCKED state (Immediate Static Fallback)
         if system_state == "locked":
             BLOCKED_REQUESTS_TOTAL.labels(reason="cooldown", state="locked").inc()
             self._log_throttled("gate_locked", "[SYSTEM] GATE LOCKED: Returning static fallback immediately", level=logging.ERROR)
-            return self._emergency_static_response(start, request_id)
+            resp = self._emergency_static_response(start, trace_id)
+            self._emit_structured_log(
+                trace_id=trace_id, provider=resp.get("provider", "static_fallback"),
+                model=resp.get("model", "baseline"), stream=False,
+                latency_ms=resp.get("latency_ms", 0), status="error",
+                error_code="system_locked",
+            )
+            return resp
 
         requested_provider = (canonical.preferred_provider or "auto").strip().lower()
         preferred, route_reason = await self._resolve_route(canonical)
-        
+
         if system_state != "healthy":
-            self._log_throttled("system_not_healthy", f"[SYSTEM] State: {system_state}, switching to linear fallback")
+            self._log_throttled("system_not_healthy", f"[SYSTEM] State: {system_state}, proceeding with linear fallback")
 
         # 4. Semantic Cache
         local_model = self.ollama_model
         if requested_provider == "auto" and canonical.max_cost_tier == "low":
             local_model = "ministral-3:3b"
-            
+
         use_local_fast_fallback = requested_provider == "auto" and canonical.max_cost_tier in {"low", "medium", "high"}
         cache_provider = "ollama" if use_local_fast_fallback else preferred
         cache_model = local_model if use_local_fast_fallback else self._model_for(cache_provider)
-        
+
         try:
             start_cache = time.monotonic()
             cached = await get_cached_response(user_text, cache_provider, cache_model)
@@ -1145,26 +978,31 @@ class LLMService:
                 FALLBACK_LEVEL_USED.labels(level="cache").inc()
                 latency_ms = int((time.monotonic() - start) * 1000)
                 resp = self._format_response_dict(
-                    cached["answer"], cached["provider"], cached["model"], latency_ms, request_id,
+                    cached["answer"], cached["provider"], cached["model"], latency_ms, trace_id,
                     fallback_used=cached["fallback_used"], cached=True, route_reason=route_reason
                 )
                 try:
                     await log_request(
-                        request_id=request_id, timestamp=timestamp, message=user_text,
+                        request_id=trace_id, timestamp=timestamp, message=user_text,
                         provider=cached["provider"], model=cached["model"], latency_ms=latency_ms,
-                        cached=True, fallback_used=cached["fallback_used"], 
+                        cached=True, fallback_used=cached["fallback_used"],
                         prompt_tokens=resp["prompt_tokens"], completion_tokens=resp["completion_tokens"],
                         cost_usd=0.0, status="ok"
                     )
                 except Exception: pass
+                self._emit_structured_log(
+                    trace_id=trace_id, provider=cached["provider"], model=cached["model"],
+                    stream=False, latency_ms=latency_ms, status="success",
+                    tokens_input=resp["prompt_tokens"], tokens_output=resp["completion_tokens"],
+                    cached=True,
+                )
                 return resp
         except Exception: pass
 
-        # 5. Execution Strategy
-        canonical_with_system = self._with_system_prompt(canonical)
+        # 5. Execution Strategy — ALWAYS linear. One provider per attempt, sequential,
+        #    fallback only before a response is produced. No parallel calls.
         timeout_ms = canonical.timeout_ms or 30000
         timeout_s = max(0.001, timeout_ms / 1000.0)
-        deadline_s = start + timeout_s
 
         # Get the strict provider chain
         chain = self._get_provider_chain(preferred, system_state=system_state)
@@ -1173,90 +1011,44 @@ class LLMService:
             chain = self._prioritize_auto_fallbacks(chain)
 
         if not chain:
+            self._emit_structured_log(
+                trace_id=trace_id, provider="none", model="none",
+                stream=False, latency_ms=int((time.monotonic() - start) * 1000),
+                status="error", error_code="no_providers",
+            )
             raise HTTPException(status_code=500, detail="No providers available")
 
-        # In testing mode or when not healthy, use linear fallback only
-        if self.testing_mode or system_state != "healthy":
-            if system_state == "critical":
-                await self._trigger_global_cooldown()
-                BLOCKED_REQUESTS_TOTAL.labels(reason="critical_state", state="critical").inc()
-            return await self._run_linear_fallback(
-                chain, user_text, start, request_id, timeout_s,
+        if system_state == "critical":
+            await self._trigger_global_cooldown()
+            BLOCKED_REQUESTS_TOTAL.labels(reason="critical_state", state="critical").inc()
+
+        try:
+            resp = await self._run_linear_fallback(
+                chain, user_text, start, trace_id, timeout_s,
                 system_state=system_state,
                 model_override=local_model,
                 requested_provider=requested_provider,
-                health_scores=health_scores
+                health_scores=health_scores,
             )
-
-        # HEALTHY state handling (Race strategy)
-        self._provider_canonical = canonical_with_system
-        try:
-            self._log_throttled("race_start", "[SYSTEM] Healthy state: Starting race execution", level=logging.INFO)
-            race_data = await self._run_fastest_response_race(
-                chain=chain,
-                user_text=user_text,
-                requested_provider=requested_provider,
-                timeout_s=timeout_s,
-                deadline_s=deadline_s,
-                local_model=local_model,
-                use_local_fast_fallback=use_local_fast_fallback,
-                health_scores=health_scores
+        except HTTPException as exc:
+            self._emit_structured_log(
+                trace_id=trace_id, provider="none", model="none",
+                stream=False, latency_ms=int((time.monotonic() - start) * 1000),
+                status="error", error_code=f"http_{exc.status_code}",
             )
-            winner_result, provider_chain, r_timeout_hit, last_error, _ = race_data
-            
-            if winner_result and "answer" in winner_result:
-                latency_ms = int((time.monotonic() - start) * 1000)
-                FALLBACK_LEVEL_USED.labels(level="race_winner").inc()
-                
-                # Check if it was a fallback (not the first in chain)
-                fallback_used = False
-                winner_provider = winner_result["provider"]
-                if provider_chain and winner_provider in provider_chain:
-                    fallback_used = provider_chain.index(winner_provider) > 0
+            raise
 
-                resp = self._format_response_dict(
-                    winner_result["answer"], 
-                    winner_provider, 
-                    winner_result["model"], 
-                    latency_ms, 
-                    request_id,
-                    fallback_used=fallback_used,
-                    cached=False,
-                    route_reason="race_winner",
-                    timeout_hit=r_timeout_hit,
-                    provider_chain=provider_chain
-                )
-                
-                # Log success
-                try:
-                    await log_request(
-                        request_id=request_id, timestamp=timestamp, message=user_text,
-                        provider=winner_provider, model=winner_result["model"], latency_ms=latency_ms,
-                        cached=False, fallback_used=fallback_used, 
-                        prompt_tokens=resp["prompt_tokens"], completion_tokens=resp["completion_tokens"],
-                        cost_usd=resp["cost_usd"], status="ok"
-                    )
-                except Exception: pass
-                
-                # Cache successful response
-                try:
-                    await set_cached_response(user_text, winner_provider, winner_result["model"], {
-                        "answer": winner_result["answer"], "provider": winner_provider, "model": winner_result["model"],
-                        "fallback_used": fallback_used
-                    })
-                except Exception: pass
-                
-                return resp
-        except Exception as e:
-            logger.warning("[RACE] Strategy failed: %s, falling back to linear execution", e)
-
-        # If race failed or returned nothing, final linear fallback as a safeguard
-        return await self._run_linear_fallback(
-            chain, user_text, start, request_id, timeout_s,
-            system_state=system_state,
-            model_override=local_model,
-            requested_provider=requested_provider
+        self._emit_structured_log(
+            trace_id=trace_id,
+            provider=resp.get("provider", "unknown"),
+            model=resp.get("model", "unknown"),
+            stream=False,
+            latency_ms=resp.get("latency_ms", 0),
+            status="fallback" if resp.get("fallback_used") else "success",
+            tokens_input=resp.get("prompt_tokens", 0),
+            tokens_output=resp.get("completion_tokens", 0),
         )
+        return resp
 
     async def stream_response(self, payload: CanonicalChatRequest | ChatRequest | str) -> AsyncIterator[dict[str, str]]:
         canonical = self._to_canonical(payload)

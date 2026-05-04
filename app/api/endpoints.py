@@ -7,10 +7,13 @@ from app.db.database import get_stats
 from app.dependencies import rate_limiter
 from app.metrics import metrics_response, record_chat_metrics, LATENCY_BREAKDOWN
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.llm_services import LLMService
+from app.services.llm_services import get_llm_service
 
 router = APIRouter()
-llm_service = LLMService()
+# Shared process-wide singleton (see app.services.llm_services.get_llm_service).
+# Kept as a module-level attribute for backward compat with tests that patch
+# `endpoints.llm_service.get_response` and with main.py's lifespan shutdown.
+llm_service = get_llm_service()
 
 
 def legacy_to_canonical(payload: ChatRequest) -> CanonicalChatRequest:

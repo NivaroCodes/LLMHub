@@ -10,11 +10,10 @@ from app.db.database import close_db, init_db
 load_dotenv()
 
 from app.api.endpoints import router as chat
-from app.api.endpoints import llm_service as chat_llm_service
 from app.api.monitoring import router as monitoring
 from app.api.openai_endpoints import router as openai_compatible
-from app.api.openai_endpoints import llm_service as openai_llm_service
 from app.middleware.monitoring import MonitoringMiddleware
+from app.services.llm_services import get_llm_service
 
 
 @asynccontextmanager
@@ -25,10 +24,14 @@ async def lifespan(app: FastAPI):
     app.state.redis = await init_redis()
     print("Redis client initialized")
 
+    # One shared LLMService instance; same object imported by both endpoint
+    # modules. Attached to app.state so request handlers / future DI paths
+    # can resolve it without a second instantiation.
+    app.state.llm_service = get_llm_service()
+
     yield
 
-    await chat_llm_service.aclose()
-    await openai_llm_service.aclose()
+    await app.state.llm_service.aclose()
 
     await close_redis()
     print("Redis client closed")

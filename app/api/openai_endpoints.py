@@ -12,10 +12,12 @@ from app.schemas.openai_chat import (
     OpenAIChatCompletionResponse,
     OpenAIUsage,
 )
-from app.services.llm_services import LLMService
+from app.services.llm_services import get_llm_service
 
 router = APIRouter(prefix="/v1", tags=["openai-compatible"])
-llm_service = LLMService()
+# Shared process-wide singleton (see app.services.llm_services.get_llm_service).
+# Same instance as `app.api.endpoints.llm_service`.
+llm_service = get_llm_service()
 
 
 @router.post("/chat/completions", response_model=OpenAIChatCompletionResponse)

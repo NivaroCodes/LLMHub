@@ -59,20 +59,21 @@ async def test_guaranteed_static_response_when_all_failed(llm_service):
     assert "Извините" in response["answer"]
     assert response["fallback_used"] is True
 
-@pytest.mark.asyncio
-async def test_race_disabled_in_critical(llm_service):
-    # Mock system state as critical
-    llm_service._get_system_state = AsyncMock(return_value={
-        "state": "critical", "cooldown": False, "scores": {"ollama": 0}
-    })
-    
-    with patch.object(llm_service, '_run_fastest_response_race', AsyncMock()) as mock_race, \
-         patch.object(llm_service, '_run_linear_fallback', AsyncMock(return_value={"answer": "ok", "provider": "p"})) as mock_linear:
-        
-        await llm_service.get_response("test")
-        
-        mock_race.assert_not_called()
-        mock_linear.assert_called()
+def test_race_hedging_methods_are_absent(llm_service):
+    """Spec guard: NO race hedging. Ever.
+
+    Previously the service had `_run_fastest_response_race` and
+    `_race_candidate`. These were removed because they (a) violate the
+    'one provider per request' rule, (b) caused 3-4x cost amplification,
+    and (c) introduced cancellation/semaphore bugs. This test asserts they
+    have not been reintroduced.
+    """
+    assert not hasattr(llm_service, "_run_fastest_response_race"), (
+        "Race hedging is forbidden; see system spec §Strict Architectural Rules."
+    )
+    assert not hasattr(llm_service, "_race_candidate"), (
+        "Race hedging is forbidden; see system spec §Strict Architectural Rules."
+    )
 
 @pytest.mark.asyncio
 async def test_global_rate_limiting_dependency():
