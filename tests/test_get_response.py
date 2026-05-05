@@ -346,33 +346,3 @@ async def test_get_response_raises_500_when_no_providers_are_available(llm_servi
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "No providers available"
 
-
-@pytest.mark.asyncio
-async def test_get_response_disables_provider_on_binary_policy_error(llm_service_factory):
-    service = llm_service_factory(openrouter_api_key=None)
-    calls: list[str] = []
-
-    async def call_provider(provider_name, provider, user_text, timeout_s, **kwargs):
-        calls.append(provider_name)
-        if provider_name == "openai":
-            raise RuntimeError("DLL load failed while importing jiter: policy blocked")
-        return "ok from fallback"
-
-    service._call_provider = AsyncMock(side_effect=call_provider)
-
-    with (
-        patch.object(llm_module, "get_cached_response", AsyncMock(return_value=None)),
-        patch.object(llm_module, "set_cached_response", AsyncMock()),
-        patch.object(llm_module, "log_request", AsyncMock()),
-    ):
-        first = await service.get_response(
-            ChatRequest(message="hello", preferred_provider="openai", max_cost_tier="none", timeout_ms=30000)
-        )
-        second = await service.get_response(
-            ChatRequest(message="hello again", preferred_provider="openai", max_cost_tier="none", timeout_ms=30000)
-        )
-
-    assert first["provider"] == "gemini"
-    assert second["provider"] == "gemini"
-    assert "openai" in service._disabled_providers
-    assert calls[0] == "openai"

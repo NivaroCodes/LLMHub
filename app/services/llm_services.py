@@ -15,7 +15,6 @@ from app.core.canonical import CanonicalChatRequest, CanonicalMessage
 from app.clients.redis_client import get_redis
 from app.core.config import (
     LATENCY_P95_THRESHOLD_MS,
-    QUOTA_BREAKER_TIMEOUT,
 )
 from app.core.prompts import get_prompt
 from app.db.database import log_request
@@ -351,15 +350,6 @@ class LLMService:
             _add(chain, "openrouter", self.openrouter)
             _add(chain, "openai", self.openai)
         return chain
-
-    @staticmethod
-    def _is_binary_policy_error(exc: Exception) -> bool:
-        text = str(exc).lower()
-        return (
-            "dll load failed while importing jiter" in text
-            or "политика управления приложениями заблокировала этот файл" in text
-            or "application control policy blocked" in text
-        )
 
     def _disable_provider(self, provider_name: str, reason: Exception) -> None:
         if provider_name in self._disabled_providers:
@@ -870,7 +860,8 @@ class LLMService:
                         cost_usd=resp["cost_usd"],
                         status="ok"
                     )
-                except Exception: pass
+                except Exception as _log_exc:
+                    logger.warning("[DB] log_request failed: %s", _log_exc)
                 
                 # Cache successful response
                 try:
@@ -878,7 +869,8 @@ class LLMService:
                         "answer": answer, "provider": provider_name, "model": current_model,
                         "fallback_used": fallback_used
                     })
-                except Exception: pass
+                except Exception as _cache_exc:
+                    logger.warning("[CACHE] set_cached_response failed: %s", _cache_exc)
                 
                 return resp
             except HTTPException:
@@ -899,9 +891,6 @@ class LLMService:
                 last_error = e
                 last_provider = provider_name
                 await self.record_provider_error(provider_name, e)
-                # Handle policy block disable logic
-                if self._is_binary_policy_error(e):
-                    self._disable_provider(provider_name, e)
                 continue
         
         # Log failure before raising/returning
@@ -913,7 +902,8 @@ class LLMService:
                     provider=last_provider or "none", model="none", latency_ms=latency_ms,
                     status="error"
                 )
-            except Exception: pass
+            except Exception as _log_exc:
+                logger.warning("[DB] log_request failed: %s", _log_exc)
 
         if self.testing_mode and system_state != "critical":
              raise HTTPException(status_code=502, detail=f"All providers failed: {str(last_error)}")
@@ -950,7 +940,8 @@ class LLMService:
                         cached=False, fallback_used=True, prompt_tokens=0, completion_tokens=0,
                         cost_usd=0.0, status="ok"
                     )
-                except Exception: pass
+                except Exception as _log_exc:
+                    logger.warning("[DB] log_request failed: %s", _log_exc)
                 self._emit_structured_log(
                     trace_id=trace_id, provider="static_intent", model="baseline",
                     stream=False, latency_ms=latency_ms, status="success",
@@ -1005,7 +996,8 @@ class LLMService:
                         prompt_tokens=resp["prompt_tokens"], completion_tokens=resp["completion_tokens"],
                         cost_usd=0.0, status="ok"
                     )
-                except Exception: pass
+                except Exception as _log_exc:
+                    logger.warning("[DB] log_request failed: %s", _log_exc)
                 self._emit_structured_log(
                     trace_id=trace_id, provider=cached["provider"], model=cached["model"],
                     stream=False, latency_ms=latency_ms, status="success",
@@ -1013,7 +1005,8 @@ class LLMService:
                     cached=True,
                 )
                 return resp
-        except Exception: pass
+        except Exception as _cache_exc:
+            logger.warning("[CACHE] get_cached_response failed: %s", _cache_exc)
 
         # 5. Execution Strategy — ALWAYS linear. One provider per attempt, sequential,
         #    fallback only before a response is produced. No parallel calls.
