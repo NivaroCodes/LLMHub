@@ -455,6 +455,7 @@ class LLMService:
             return text
         # Remove bold/italic markdown
         text = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", text)
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
         # Remove inline code
         text = re.sub(r'`([^`]*)`', r"\1", text)
         # Remove code fences

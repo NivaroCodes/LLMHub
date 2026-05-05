@@ -47,6 +47,10 @@ app.include_router(monitoring)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
+@app.get("/")
+def root():
+    return {"service": "LLMHub", "version": "0.1.0", "docs": "/docs"}
+
 @app.get("/hi")
 async def great():
     return {"message": "Welcome!"}
