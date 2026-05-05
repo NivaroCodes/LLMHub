@@ -690,8 +690,6 @@ class LLMService:
         
         async with self._global_semaphore:
             async with semaphore:
-                # We don't check is_provider_healthy here again because it was checked in _run_fastest_response_race
-                # and we want to allow Half-Open probes which are initiated through that check.
                 
                 start_provider = time.monotonic()
                 timeout_ms = max(1, int(timeout_s * 1000))
@@ -1071,29 +1069,97 @@ class LLMService:
             raise HTTPException(status_code=500, detail="No providers available")
 
         last_error: Exception | None = None
+        # Slice 3 FIX A: once any byte has been yielded to the client, we MUST NOT
+        # fall back to another provider — that would splice two providers' output
+        # into a single visible response.
+        response_started = False
+
         for i, (provider_name, provider) in enumerate(chain):
             if not await self.is_provider_healthy(provider_name):
-                self._log_throttled(f"stream_skip_{provider_name}", f"[STREAM] Skipping unhealthy provider: {provider_name}")
+                self._log_throttled(
+                    f"stream_skip_{provider_name}",
+                    f"[STREAM] Skipping unhealthy provider: {provider_name}",
+                )
                 continue
 
             stream_method = getattr(provider, "stream", None)
             if stream_method is None:
                 continue
             try:
-                kwargs: dict[str, Any] = {}
-                if provider_name == "ollama":
-                    kwargs["timeout_s"] = timeout_s
-                async for chunk in stream_method(canonical_with_system, model=self._model_for(provider_name), **kwargs):
-                    if chunk:
+                # FIX B: every provider's stream() accepts timeout_s via **kwargs
+                # (verified in app/providers/*.py); pass uniformly.
+                kwargs: dict[str, Any] = {"timeout_s": timeout_s}
+
+                # FIX C: buffer layer.
+                # Flush triggers (any one):
+                #   * buffered text >= 40 chars
+                #   * chunk ends on a sentence/clause punctuation mark
+                #   * 80ms have elapsed since the last flush
+                # An elapsed-time guard inside the loop enforces timeout_s for
+                # all providers, not just ollama.
+                buffer: list[str] = []
+                last_flush = time.monotonic()
+                stream_start = time.monotonic()
+
+                async for chunk in stream_method(
+                    canonical_with_system,
+                    model=self._model_for(provider_name),
+                    **kwargs,
+                ):
+                    if time.monotonic() - stream_start > timeout_s:
+                        logger.warning(
+                            "[STREAM] %s exceeded timeout %.1fs",
+                            provider_name,
+                            timeout_s,
+                        )
+                        break
+
+                    if not chunk:
+                        continue
+
+                    buffer.append(chunk)
+                    now = time.monotonic()
+
+                    should_flush = (
+                        sum(len(c) for c in buffer) >= 40
+                        or chunk[-1] in ".!?,;:"
+                        or (now - last_flush) >= 0.08
+                    )
+
+                    if should_flush:
+                        text = "".join(buffer)
+                        buffer.clear()
+                        last_flush = now
+                        # Mark BEFORE yielding so an exception raised from the
+                        # generator consumer cannot leave the flag stale.
+                        response_started = True
                         yield {
-                            "content": chunk,
+                            "content": text,
                             "provider": provider_name,
                             "model": self._model_for(provider_name),
                             "route_reason": route_reason,
                             "fallback_used": i > 0,
                         }
+
+                # Flush trailing buffer (sub-threshold tail).
+                if buffer:
+                    response_started = True
+                    yield {
+                        "content": "".join(buffer),
+                        "provider": provider_name,
+                        "model": self._model_for(provider_name),
+                        "route_reason": route_reason,
+                        "fallback_used": i > 0,
+                    }
                 return
             except Exception as exc:
+                # FIX A: never silently switch providers mid-stream.
+                if response_started:
+                    logger.warning(
+                        "[STREAM] %s failed mid-stream after first byte sent, stopping",
+                        provider_name,
+                    )
+                    return
                 if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
                     logger.info("[FALLBACK] 429 from %s, switching", provider_name)
                 if isinstance(exc, TimeoutError):
