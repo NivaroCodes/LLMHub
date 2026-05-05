@@ -26,14 +26,12 @@ class TestProviderChain:
         assert [name for name, _ in chain] == ["ollama", "gemini", "openai", "openrouter"]
 
     def test_auto_preference_uses_default_fallback_order(self, llm_service):
+        # Cost-first auto order: free local → free tier → cheaper paid →
+        # reliable paid. Single source of truth (the old
+        # `_prioritize_auto_fallbacks` post-processor was removed).
         chain = llm_service._get_provider_chain("auto")
 
-        assert [name for name, _ in chain] == ["ollama", "gemini", "openai", "openrouter"]
-
-    def test_auto_low_cost_fallback_priority_prefers_openrouter_after_local(self, llm_service):
-        chain = llm_service._prioritize_auto_fallbacks(llm_service._get_provider_chain("gemini"))
-
-        assert [name for name, _ in chain] == ["ollama", "openrouter", "gemini", "openai"]
+        assert [name for name, _ in chain] == ["ollama", "gemini", "openrouter", "openai"]
 
     def test_chain_skips_providers_without_credentials(self, llm_service_factory):
         service = llm_service_factory(

@@ -335,17 +335,22 @@ class LLMService:
             _add(chain, "gemini", self.gemini)
             _add(chain, "ollama", self.ollama)
         else:
-            # Default order for HEALTHY state (auto mode)
-            # Requirements say: ollama, gemini, openai, openrouter
+            # Default HEALTHY auto order. Single source of truth (the old
+            # `_prioritize_auto_fallbacks` post-processor was removed; it
+            # duplicated this decision and was applied only in get_response,
+            # causing stream_response to use a different chain).
+            #
+            # Rationale (cost-first, reliability-second):
+            #   1. ollama     — local, free, try always
+            #   2. gemini     — free tier (~15 RPM / 1500 RPD); Slice 2
+            #                   quota backoff auto-skips once 429'd
+            #   3. openrouter — paid aggregator, cheaper than openai direct
+            #   4. openai     — terminal paid fallback, most reliable SLA
             _add(chain, "ollama", self.ollama)
             _add(chain, "gemini", self.gemini)
-            _add(chain, "openai", self.openai)
             _add(chain, "openrouter", self.openrouter)
+            _add(chain, "openai", self.openai)
         return chain
-
-    def _prioritize_auto_fallbacks(self, chain: list[tuple[str, object]]) -> list[tuple[str, object]]:
-        order = {"ollama": 0, "openrouter": 1, "gemini": 2, "openai": 3}
-        return sorted(chain, key=lambda item: order.get(item[0], 99))
 
     @staticmethod
     def _is_binary_policy_error(exc: Exception) -> bool:
@@ -769,16 +774,29 @@ class LLMService:
         return CanonicalChatRequest.from_text(str(payload))
 
     async def _resolve_route(self, canonical: CanonicalChatRequest) -> tuple[str, str]:
+        """Resolve (preferred_provider, route_reason).
+
+        For explicit `preferred_provider` — honor it and chain starts there.
+
+        For `auto` — we deliberately keep `preferred == "auto"` so the chain
+        starts with ollama (free local, cost-first). The rule/agent router is
+        still invoked to compute `route_reason` for logging/metrics and to
+        keep router-decision test contracts intact, but its suggested provider
+        no longer overrides the chain head. This replaces the former two-step
+        dance (router picks → `_prioritize_auto_fallbacks` re-pins ollama).
+        """
         start = time.monotonic()
         user_text = canonical.user_text
         preferred = (canonical.preferred_provider or "auto").strip().lower()
         route_reason = "preferred_provider_override"
         if preferred == "auto":
             if self.router_mode == "agent":
-                preferred = await self._agent_route(user_text)
+                # Invoked for route_reason/metrics only; return value unused
+                # for chain ordering in auto mode.
+                await self._agent_route(user_text)
                 route_reason = "agent_router_decision"
             else:
-                preferred = self._rule_route(user_text)
+                self._rule_route(user_text)
                 route_reason = choose_route(
                     user_text,
                     local_model=self.ollama_model,
@@ -1004,9 +1022,6 @@ class LLMService:
 
         # Get the strict provider chain
         chain = self._get_provider_chain(preferred, system_state=system_state)
-
-        if requested_provider == "auto":
-            chain = self._prioritize_auto_fallbacks(chain)
 
         if not chain:
             self._emit_structured_log(

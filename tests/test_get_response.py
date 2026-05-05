@@ -120,7 +120,13 @@ async def test_get_response_uses_agent_router_when_auto_mode_is_enabled(llm_serv
 
 
 @pytest.mark.asyncio
-async def test_get_response_auto_low_uses_openrouter_after_local_timeout_even_if_agent_chose_gemini(llm_service_factory):
+async def test_get_response_auto_ignores_agent_suggestion_and_falls_back_in_chain_order(llm_service_factory):
+    """In auto mode the chain is fixed (ollama → gemini → openrouter → openai);
+    the agent/rule router's suggested provider is used only for route_reason,
+    not for chain ordering. After ollama times out we fall through to gemini.
+    (At runtime, if gemini is quota-banned, Slice 2's ban check skips it and
+    the effective chain becomes ollama → openrouter, but that's a health-layer
+    concern, not a routing-layer one.)"""
     service = llm_service_factory(router_mode="agent")
     service._agent_route = AsyncMock(return_value="gemini")
 
@@ -140,8 +146,8 @@ async def test_get_response_auto_low_uses_openrouter_after_local_timeout_even_if
             ChatRequest(message="Привет. Расскажи про Нью-Йорк", preferred_provider="auto", max_cost_tier="low")
         )
 
-    assert [call.args[0] for call in service._call_provider.await_args_list] == ["ollama", "openrouter"]
-    assert response["provider"] == "openrouter"
+    assert [call.args[0] for call in service._call_provider.await_args_list] == ["ollama", "gemini"]
+    assert response["provider"] == "gemini"
     assert response["fallback_used"] is True
 
 
