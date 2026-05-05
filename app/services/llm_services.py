@@ -449,6 +449,23 @@ class LLMService:
             "provider_chain": provider_chain or [provider],
         }
 
+    def _format_output(self, text: str) -> str:
+        # Stateless formatter for LLM output. Uses module-level `re` import.
+        if not text:
+            return text
+        # Remove bold/italic markdown
+        text = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", text)
+        # Remove inline code
+        text = re.sub(r'`([^`]*)`', r"\1", text)
+        # Remove code fences
+        text = re.sub(r'```[\w]*\n?', '', text)
+        # Normalize multiple spaces to one
+        text = re.sub(r'[ \t]{2,}', ' ', text)
+        # Normalize more than 2 consecutive newlines to 2
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        # Strip leading/trailing whitespace
+        return text.strip()
+
     def _emergency_static_response(self, start_time: float, request_id: str) -> dict:
         latency_ms = int((time.monotonic() - start_time) * 1000)
         FALLBACK_LEVEL_USED.labels(level="static_safe").inc()
@@ -839,6 +856,7 @@ class LLMService:
                     provider_timeout_s,
                     model_override=current_model if provider_name == "ollama" else None
                 )
+                answer = self._format_output(answer)
                 
                 latency_ms = int((time.monotonic() - start_time) * 1000)
                 
@@ -1136,6 +1154,7 @@ class LLMService:
 
                     if should_flush:
                         text = "".join(buffer)
+                        text = self._format_output(text)
                         buffer.clear()
                         last_flush = now
                         # Mark BEFORE yielding so an exception raised from the
@@ -1152,8 +1171,10 @@ class LLMService:
                 # Flush trailing buffer (sub-threshold tail).
                 if buffer:
                     response_started = True
+                    text = "".join(buffer)
+                    text = self._format_output(text)
                     yield {
-                        "content": "".join(buffer),
+                        "content": text,
                         "provider": provider_name,
                         "model": self._model_for(provider_name),
                         "route_reason": route_reason,
