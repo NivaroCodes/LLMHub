@@ -919,7 +919,8 @@ class LLMService:
                 await log_request(
                     request_id=request_id, timestamp=timestamp, message=user_text,
                     provider=last_provider or "none", model="none", latency_ms=latency_ms,
-                    status="error"
+                    cached=False, fallback_used=True, prompt_tokens=0, completion_tokens=0,
+                    cost_usd=0.0, status="error"
                 )
             except Exception as _log_exc:
                 logger.warning("[DB] log_request failed: %s", _log_exc)
