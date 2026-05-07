@@ -83,8 +83,8 @@ class LLMService:
         self.router_model = os.getenv("ROUTER_MODEL", self.gemini_model)
         self.router_timeout_ms = int(os.getenv("ROUTER_TIMEOUT_MS", "2000"))
         # Per-provider per-call timeouts.
-        self.local_timeout_ms = int(os.getenv("LOCAL_TIMEOUT_MS", "3000"))
-        self.remote_timeout_ms = int(os.getenv("REMOTE_TIMEOUT_MS", "10000"))
+        self.local_timeout_ms = int(os.getenv("LOCAL_TIMEOUT_MS", "15000"))
+        self.remote_timeout_ms = int(os.getenv("REMOTE_TIMEOUT_MS", "7000"))
         self.provider_stagger_ms = int(os.getenv("PROVIDER_STAGGER_MS", "250"))
         
         # Concurrency control per provider

@@ -5,7 +5,7 @@ class ChatRequest(BaseModel):
     message: str
     preferred_provider: str = "auto"
     max_cost_tier: str = "low"
-    timeout_ms: int = 120000
+    timeout_ms: int = 45000
 
 
 class ChatResponse(BaseModel):

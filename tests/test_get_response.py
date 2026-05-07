@@ -57,7 +57,7 @@ async def test_get_response_calls_preferred_provider_and_caches_result(llm_servi
     assert service._call_provider.await_args.args[0] == "gemini"
     assert service._call_provider.await_args.args[1] == service.gemini
     assert service._call_provider.await_args.args[2] == "write code"
-    assert service._call_provider.await_args.args[3] == pytest.approx(10.0, abs=0.1)
+    assert service._call_provider.await_args.args[3] == pytest.approx(7.0, abs=0.1)
     assert response["answer"] == "fresh answer"
     assert response["provider"] == "gemini"
     assert response["model"] == service.gemini_model
@@ -92,7 +92,7 @@ async def test_get_response_accepts_string_payload_and_uses_rule_router_for_auto
         response = await service.get_response("hello")
 
     service._call_provider.assert_awaited_once_with(
-        "ollama", service.ollama, "hello", 3.0, model_override="ministral-3:3b"
+        "ollama", service.ollama, "hello", 15.0, model_override="ministral-3:3b"
     )
     assert response["provider"] == "ollama"
     assert response["model"] == "ministral-3:3b"
@@ -114,7 +114,7 @@ async def test_get_response_uses_agent_router_when_auto_mode_is_enabled(llm_serv
 
     service._agent_route.assert_awaited_once_with("route me")
     service._call_provider.assert_awaited_once_with(
-        "ollama", service.ollama, "route me", 3.0, model_override="ministral-3:3b"
+        "ollama", service.ollama, "route me", 15.0, model_override="ministral-3:3b"
     )
     assert response["provider"] == "ollama"
 
