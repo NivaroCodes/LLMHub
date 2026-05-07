@@ -82,10 +82,9 @@ class LLMService:
         self.router_mode = os.getenv("ROUTER_MODE", "rules").strip().lower()
         self.router_model = os.getenv("ROUTER_MODEL", self.gemini_model)
         self.router_timeout_ms = int(os.getenv("ROUTER_TIMEOUT_MS", "2000"))
-        # Per-provider per-call timeouts. Env var names kept for .env compat;
-        # the 'race' framing is obsolete (Slice 1 removed race hedging).
-        self.local_timeout_ms = int(os.getenv("LOCAL_RACE_TIMEOUT_MS", "3000"))
-        self.remote_timeout_ms = int(os.getenv("REMOTE_RACE_TIMEOUT_MS", "10000"))
+        # Per-provider per-call timeouts.
+        self.local_timeout_ms = int(os.getenv("LOCAL_TIMEOUT_MS", "3000"))
+        self.remote_timeout_ms = int(os.getenv("REMOTE_TIMEOUT_MS", "10000"))
         self.provider_stagger_ms = int(os.getenv("PROVIDER_STAGGER_MS", "250"))
         
         # Concurrency control per provider
@@ -1013,8 +1012,8 @@ class LLMService:
                         request_id=trace_id, timestamp=timestamp, message=user_text,
                         provider=cached["provider"], model=cached["model"], latency_ms=latency_ms,
                         cached=True, fallback_used=cached["fallback_used"],
-                        prompt_tokens=resp["prompt_tokens"], completion_tokens=resp["completion_tokens"],
-                        cost_usd=0.0, status="ok"
+                        prompt_tokens=resp.get("prompt_tokens", 0), completion_tokens=resp.get("completion_tokens", 0),
+                        cost_usd=resp.get("cost_usd", 0.0), status="ok"
                     )
                 except Exception as _log_exc:
                     logger.warning("[DB] log_request failed: %s", _log_exc)
