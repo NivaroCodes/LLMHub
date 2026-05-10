@@ -5,23 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "llmhub"
 version = "0.1.0"
+description = "LLMHub - Open-source multi-provider LLM gateway"
+requires-python = ">=3.9"
 dependencies = [
-  "fastapi",
-  "uvicorn",
-  "httpx",
-  "openai",
-  "pydantic",
-  "python-dotenv",
-  "google-genai",
-  "typer",
+    "httpx>=0.24.0",
+    "pydantic>=2.0",
+    "typer>=0.9.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
 ]
 
 [project.scripts]
 llmhub = "cli:app"
 
 [tool.setuptools]
-packages = ["app"]
 py-modules = ["cli"]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "llmhub_sdk*"]
