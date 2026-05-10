@@ -1,207 +1,207 @@
-<svg width="800" height="2400" xmlns="http://www.w3.org/2000/svg">
+<svg width="800" height="2600" xmlns="http://www.w3.org/2000/svg">
   <style>
     text { font-family: system-ui, -apple-system, sans-serif; }
   </style>
   
   <!-- Background -->
-  <rect width="800" height="2400" fill="#ffffff"/>
+  <rect width="800" height="2600" fill="#0d1117"/>
   
   <!-- SECTION 1: Header (y: 0-120) -->
-  <text x="400" y="50" text-anchor="middle" font-size="32" font-weight="500">LLMHub</text>
-  <text x="400" y="80" text-anchor="middle" font-size="14" fill="#6b7280">Open-source LLM gateway. Local inference first, cloud fallback second.</text>
+  <text x="400" y="50" text-anchor="middle" font-size="32" font-weight="500" fill="#f0f6fc">LLMHub</text>
+  <text x="400" y="80" text-anchor="middle" font-size="15" fill="#8b949e">Open-source LLM gateway. Local inference first, cloud fallback second.</text>
   
   <!-- Navigation links -->
-  <text x="400" y="105" text-anchor="middle" font-size="13" fill="#378add">
+  <text x="400" y="105" text-anchor="middle" font-size="14" fill="#378add">
     Why · Quick Start · Integration · Configuration · API · Roadmap
   </text>
   
   <!-- Badges -->
   <g transform="translate(260, 115)">
-    <rect x="0" y="0" width="60" height="20" rx="4" fill="#f3f4f6"/>
-    <text x="30" y="14" text-anchor="middle" font-size="11">Stars</text>
+    <rect x="0" y="0" width="60" height="20" rx="4" fill="#161b22"/>
+    <text x="30" y="14" text-anchor="middle" font-size="13" fill="#e6edf3">Stars</text>
     
-    <rect x="70" y="0" width="90" height="20" rx="4" fill="#f3f4f6"/>
-    <text x="115" y="14" text-anchor="middle" font-size="11">python 3.9+</text>
+    <rect x="70" y="0" width="90" height="20" rx="4" fill="#161b22"/>
+    <text x="115" y="14" text-anchor="middle" font-size="13" fill="#e6edf3">python 3.9+</text>
     
-    <rect x="170" y="0" width="50" height="20" rx="4" fill="#f3f4f6"/>
-    <text x="195" y="14" text-anchor="middle" font-size="11">MIT</text>
+    <rect x="170" y="0" width="50" height="20" rx="4" fill="#161b22"/>
+    <text x="195" y="14" text-anchor="middle" font-size="13" fill="#e6edf3">MIT</text>
     
-    <rect x="230" y="0" width="80" height="20" rx="4" fill="#f3f4f6"/>
-    <text x="270" y="14" text-anchor="middle" font-size="11">live demo</text>
+    <rect x="230" y="0" width="80" height="20" rx="4" fill="#161b22"/>
+    <text x="270" y="14" text-anchor="middle" font-size="13" fill="#e6edf3">live demo</text>
   </g>
   
   <!-- SECTION 2: Why LLMHub? (y: 200-560) -->
-  <text x="40" y="230" font-size="20" font-weight="500">Why LLMHub?</text>
-  <text x="40" y="255" font-size="13" fill="#6b7280">Local-first LLM gateway that prioritizes Ollama before falling back to cloud providers.</text>
-  <text x="40" y="275" font-size="13" fill="#6b7280">Automatic fallback chain: Ollama → Gemini → OpenRouter → OpenAI based on cost and availability.</text>
+  <text x="40" y="270" font-size="22" font-weight="500" fill="#f0f6fc">Why LLMHub?</text>
+  <text x="40" y="295" font-size="15" fill="#8b949e">Local-first LLM gateway that prioritizes Ollama before falling back to cloud providers.</text>
+  <text x="40" y="315" font-size="15" fill="#8b949e">Automatic fallback chain: Ollama → Gemini → OpenRouter → OpenAI based on cost and availability.</text>
   
   <!-- Fallback chain diagram -->
-  <g transform="translate(40, 300)">
+  <g transform="translate(40, 340)">
     <!-- Node 1: Ollama -->
     <rect x="0" y="0" width="160" height="40" rx="8" fill="#e1f5ee" stroke="#1d9e75"/>
-    <text x="80" y="25" text-anchor="middle" font-size="13" fill="#0f6e56">Ollama</text>
-    <line x1="160" y1="20" x2="180" y2="20" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="25" text-anchor="middle" font-size="15" fill="#0f6e56">Ollama</text>
+    <line x1="160" y1="20" x2="180" y2="20" stroke="#8b949e" stroke-width="1"/>
     <rect x="180" y="4" width="180" height="32" rx="4" fill="#e1f5ee" stroke="#1d9e75"/>
-    <text x="270" y="25" text-anchor="middle" font-size="11" fill="#0f6e56">free, local · $0.00</text>
+    <text x="270" y="25" text-anchor="middle" font-size="13" fill="#0f6e56">free, local · $0.00</text>
     
     <!-- Fallback label -->
-    <text x="80" y="55" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">↓ unavailable</text>
-    <line x1="80" y1="40" x2="80" y2="60" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="55" text-anchor="middle" font-size="13" fill="#8b949e" font-style="italic">↓ unavailable</text>
+    <line x1="80" y1="40" x2="80" y2="60" stroke="#8b949e" stroke-width="1"/>
     
     <!-- Node 2: Gemini -->
     <rect x="0" y="60" width="160" height="40" rx="8" fill="#e1f5ee" stroke="#5dcaa5"/>
-    <text x="80" y="85" text-anchor="middle" font-size="13" fill="#0f6e56">Gemini</text>
-    <line x1="160" y1="80" x2="180" y2="80" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="85" text-anchor="middle" font-size="15" fill="#0f6e56">Gemini</text>
+    <line x1="160" y1="80" x2="180" y2="80" stroke="#8b949e" stroke-width="1"/>
     <rect x="180" y="64" width="180" height="32" rx="4" fill="#e1f5ee" stroke="#5dcaa5"/>
-    <text x="270" y="85" text-anchor="middle" font-size="11" fill="#0f6e56">free tier · ~$0.00</text>
+    <text x="270" y="85" text-anchor="middle" font-size="13" fill="#0f6e56">free tier · ~$0.00</text>
     
     <!-- Fallback label -->
-    <text x="80" y="115" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">↓ rate limited</text>
-    <line x1="80" y1="100" x2="80" y2="120" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="115" text-anchor="middle" font-size="13" fill="#8b949e" font-style="italic">↓ rate limited</text>
+    <line x1="80" y1="100" x2="80" y2="120" stroke="#8b949e" stroke-width="1"/>
     
     <!-- Node 3: OpenRouter -->
     <rect x="0" y="120" width="160" height="40" rx="8" fill="#e6f1fb" stroke="#85b7eb"/>
-    <text x="80" y="145" text-anchor="middle" font-size="13" fill="#185fa5">OpenRouter</text>
-    <line x1="160" y1="140" x2="180" y2="140" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="145" text-anchor="middle" font-size="15" fill="#185fa5">OpenRouter</text>
+    <line x1="160" y1="140" x2="180" y2="140" stroke="#8b949e" stroke-width="1"/>
     <rect x="180" y="124" width="180" height="32" rx="4" fill="#e6f1fb" stroke="#85b7eb"/>
-    <text x="270" y="145" text-anchor="middle" font-size="11" fill="#185fa5">cheap cloud · $0.00001</text>
+    <text x="270" y="145" text-anchor="middle" font-size="13" fill="#185fa5">cheap cloud · $0.00001</text>
     
     <!-- Fallback label -->
-    <text x="80" y="175" text-anchor="middle" font-size="11" fill="#9ca3af" font-style="italic">↓ quota exceeded</text>
-    <line x1="80" y1="160" x2="80" y2="180" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="175" text-anchor="middle" font-size="13" fill="#8b949e" font-style="italic">↓ quota exceeded</text>
+    <line x1="80" y1="160" x2="80" y2="180" stroke="#8b949e" stroke-width="1"/>
     
     <!-- Node 4: OpenAI -->
     <rect x="0" y="180" width="160" height="40" rx="8" fill="#f1efe8" stroke="#b4b2a9"/>
-    <text x="80" y="205" text-anchor="middle" font-size="13" fill="#5f5e5a">OpenAI</text>
-    <line x1="160" y1="200" x2="180" y2="200" stroke="#9ca3af" stroke-width="1"/>
+    <text x="80" y="205" text-anchor="middle" font-size="15" fill="#5f5e5a">OpenAI</text>
+    <line x1="160" y1="200" x2="180" y2="200" stroke="#8b949e" stroke-width="1"/>
     <rect x="180" y="184" width="180" height="32" rx="4" fill="#f1efe8" stroke="#b4b2a9"/>
-    <text x="270" y="205" text-anchor="middle" font-size="11" fill="#5f5e5a">last resort · $0.002</text>
+    <text x="270" y="205" text-anchor="middle" font-size="13" fill="#5f5e5a">last resort · $0.002</text>
   </g>
   
   <!-- Blockquote -->
-  <rect x="40" y="520" width="720" height="40" rx="8" fill="#f5f5ff" stroke="#534ab7" stroke-width="0" style="border-left: 3px solid #534ab7;"/>
-  <text x="50" y="545" font-size="12" fill="#6b7280">Note: Portkey and Helicone have been acquired. LLMHub remains independent and open-source.</text>
+  <rect x="40" y="560" width="720" height="40" rx="8" fill="#161b22" stroke="#534ab7" stroke-width="0" style="border-left: 3px solid #534ab7;"/>
+  <text x="50" y="585" font-size="14" fill="#8b949e">Note: Portkey and Helicone have been acquired. LLMHub remains independent and open-source.</text>
   
   <!-- SECTION 3: Integration cards (y: 600-700) -->
-  <text x="40" y="630" font-size="20" font-weight="500">Integration</text>
+  <text x="40" y="670" font-size="22" font-weight="500" fill="#f0f6fc">Integration</text>
   
-  <g transform="translate(40, 650)">
+  <g transform="translate(40, 690)">
     <!-- Card 1: Python SDK -->
-    <rect x="0" y="0" width="226" height="80" rx="8" fill="white" stroke="#e5e7eb"/>
+    <rect x="0" y="0" width="226" height="80" rx="8" fill="#161b22" stroke="#30363d"/>
     <circle cx="113" cy="25" r="12" fill="#8b5cf6"/>
     <text x="113" y="30" text-anchor="middle" font-size="14" fill="white" font-weight="500">P</text>
-    <text x="113" y="50" text-anchor="middle" font-size="13" font-weight="500">Python SDK</text>
-    <text x="113" y="68" text-anchor="middle" font-size="11" fill="#6b7280">Native async/sync client</text>
+    <text x="113" y="50" text-anchor="middle" font-size="15" font-weight="500" fill="#e6edf3">Python SDK</text>
+    <text x="113" y="68" text-anchor="middle" font-size="13" fill="#8b949e">Native async/sync client</text>
     
     <!-- Card 2: OpenAI compatible -->
-    <rect x="246" y="0" width="226" height="80" rx="8" fill="white" stroke="#e5e7eb"/>
+    <rect x="246" y="0" width="226" height="80" rx="8" fill="#161b22" stroke="#30363d"/>
     <circle cx="359" cy="25" r="12" fill="#10b981"/>
     <text x="359" y="30" text-anchor="middle" font-size="14" fill="white" font-weight="500">O</text>
-    <text x="359" y="50" text-anchor="middle" font-size="13" font-weight="500">OpenAI compatible</text>
-    <text x="359" y="68" text-anchor="middle" font-size="11" fill="#6b7280">Drop-in replacement</text>
+    <text x="359" y="50" text-anchor="middle" font-size="15" font-weight="500" fill="#e6edf3">OpenAI compatible</text>
+    <text x="359" y="68" text-anchor="middle" font-size="13" fill="#8b949e">Drop-in replacement</text>
     
     <!-- Card 3: HTTP API -->
-    <rect x="492" y="0" width="226" height="80" rx="8" fill="white" stroke="#e5e7eb"/>
+    <rect x="492" y="0" width="226" height="80" rx="8" fill="#161b22" stroke="#30363d"/>
     <circle cx="605" cy="25" r="12" fill="#3b82f6"/>
     <text x="605" y="30" text-anchor="middle" font-size="14" fill="white" font-weight="500">H</text>
-    <text x="605" y="50" text-anchor="middle" font-size="13" font-weight="500">HTTP API</text>
-    <text x="605" y="68" text-anchor="middle" font-size="11" fill="#6b7280">Works with any language</text>
+    <text x="605" y="50" text-anchor="middle" font-size="15" font-weight="500" fill="#e6edf3">HTTP API</text>
+    <text x="605" y="68" text-anchor="middle" font-size="13" fill="#8b949e">Works with any language</text>
   </g>
   
   <!-- SECTION 4: Comparison table (y: 720-960) -->
-  <text x="40" y="750" font-size="20" font-weight="500">Comparison</text>
+  <text x="40" y="830" font-size="22" font-weight="500" fill="#f0f6fc">Comparison</text>
   
-  <g transform="translate(40, 770)">
+  <g transform="translate(40, 850)">
     <!-- Header row -->
-    <rect x="0" y="0" width="720" height="32" rx="4" fill="#f9fafb"/>
-    <text x="20" y="20" font-size="12" font-weight="500">Feature</text>
-    <text x="200" y="20" font-size="12" font-weight="500">LLMHub</text>
-    <text x="340" y="20" font-size="12" font-weight="500">LiteLLM</text>
-    <text x="480" y="20" font-size="12" font-weight="500">OpenRouter</text>
+    <rect x="0" y="0" width="720" height="32" rx="4" fill="#161b22"/>
+    <text x="20" y="20" font-size="14" font-weight="500" fill="#e6edf3">Feature</text>
+    <text x="200" y="20" font-size="14" font-weight="500" fill="#e6edf3">LLMHub</text>
+    <text x="340" y="20" font-size="14" font-weight="500" fill="#e6edf3">LiteLLM</text>
+    <text x="480" y="20" font-size="14" font-weight="500" fill="#e6edf3">OpenRouter</text>
     
     <!-- Row 1 -->
-    <line x1="0" y1="32" x2="720" y2="32" stroke="#f3f4f6"/>
-    <text x="20" y="52" font-size="12">Local Ollama as primary</text>
-    <text x="200" y="52" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="52" font-size="12" fill="#f59e0b">~</text>
-    <text x="480" y="52" font-size="12" fill="#9ca3af">—</text>
+    <line x1="0" y1="32" x2="720" y2="32" stroke="#21262d"/>
+    <text x="20" y="52" font-size="14" fill="#e6edf3">Local Ollama as primary</text>
+    <text x="200" y="52" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="52" font-size="14" fill="#f59e0b">~</text>
+    <text x="480" y="52" font-size="14" fill="#8b949e">—</text>
     
     <!-- Row 2 -->
-    <line x1="0" y1="64" x2="720" y2="64" stroke="#f3f4f6"/>
-    <text x="20" y="84" font-size="12">Cost-first fallback chain</text>
-    <text x="200" y="84" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="84" font-size="12" fill="#9ca3af">—</text>
-    <text x="480" y="84" font-size="12" fill="#9ca3af">—</text>
+    <line x1="0" y1="64" x2="720" y2="64" stroke="#21262d"/>
+    <text x="20" y="84" font-size="14" fill="#e6edf3">Cost-first fallback chain</text>
+    <text x="200" y="84" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="84" font-size="14" fill="#8b949e">—</text>
+    <text x="480" y="84" font-size="14" fill="#8b949e">—</text>
     
     <!-- Row 3 -->
-    <line x1="0" y1="96" x2="720" y2="96" stroke="#f3f4f6"/>
-    <text x="20" y="116" font-size="12">Self-hosted</text>
-    <text x="200" y="116" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="116" font-size="12" fill="#10b981">✓</text>
-    <text x="480" y="116" font-size="12" fill="#9ca3af">—</text>
+    <line x1="0" y1="96" x2="720" y2="96" stroke="#21262d"/>
+    <text x="20" y="116" font-size="14" fill="#e6edf3">Self-hosted</text>
+    <text x="200" y="116" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="116" font-size="14" fill="#10b981">✓</text>
+    <text x="480" y="116" font-size="14" fill="#8b949e">—</text>
     
     <!-- Row 4 -->
-    <line x1="0" y1="128" x2="720" y2="128" stroke="#f3f4f6"/>
-    <text x="20" y="148" font-size="12">OpenAI-compatible API</text>
-    <text x="200" y="148" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="148" font-size="12" fill="#10b981">✓</text>
-    <text x="480" y="148" font-size="12" fill="#10b981">✓</text>
+    <line x1="0" y1="128" x2="720" y2="128" stroke="#21262d"/>
+    <text x="20" y="148" font-size="14" fill="#e6edf3">OpenAI-compatible API</text>
+    <text x="200" y="148" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="148" font-size="14" fill="#10b981">✓</text>
+    <text x="480" y="148" font-size="14" fill="#10b981">✓</text>
     
     <!-- Row 5 -->
-    <line x1="0" y1="160" x2="720" y2="160" stroke="#f3f4f6"/>
-    <text x="20" y="180" font-size="12">Python SDK</text>
-    <text x="200" y="180" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="180" font-size="12" fill="#10b981">✓</text>
-    <text x="480" y="180" font-size="12" fill="#9ca3af">—</text>
+    <line x1="0" y1="160" x2="720" y2="160" stroke="#21262d"/>
+    <text x="20" y="180" font-size="14" fill="#e6edf3">Python SDK</text>
+    <text x="200" y="180" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="180" font-size="14" fill="#10b981">✓</text>
+    <text x="480" y="180" font-size="14" fill="#8b949e">—</text>
     
     <!-- Row 6 -->
-    <line x1="0" y1="192" x2="720" y2="192" stroke="#f3f4f6"/>
-    <text x="20" y="212" font-size="12">Prometheus metrics</text>
-    <text x="200" y="212" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="212" font-size="12" fill="#10b981">✓</text>
-    <text x="480" y="212" font-size="12" fill="#9ca3af">—</text>
+    <line x1="0" y1="192" x2="720" y2="192" stroke="#21262d"/>
+    <text x="20" y="212" font-size="14" fill="#e6edf3">Prometheus metrics</text>
+    <text x="200" y="212" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="212" font-size="14" fill="#10b981">✓</text>
+    <text x="480" y="212" font-size="14" fill="#8b949e">—</text>
     
     <!-- Row 7 -->
-    <line x1="0" y1="224" x2="720" y2="224" stroke="#f3f4f6"/>
-    <text x="20" y="244" font-size="12">Independent OSS</text>
-    <text x="200" y="244" font-size="12" fill="#10b981">✓</text>
-    <text x="340" y="244" font-size="12" fill="#10b981">✓</text>
-    <text x="480" y="244" font-size="12" fill="#9ca3af">—</text>
+    <line x1="0" y1="224" x2="720" y2="224" stroke="#21262d"/>
+    <text x="20" y="244" font-size="14" fill="#e6edf3">Independent OSS</text>
+    <text x="200" y="244" font-size="14" fill="#10b981">✓</text>
+    <text x="340" y="244" font-size="14" fill="#10b981">✓</text>
+    <text x="480" y="244" font-size="14" fill="#8b949e">—</text>
   </g>
   
   <!-- SECTION 5: Roadmap (y: 980-1200) -->
-  <text x="40" y="1010" font-size="20" font-weight="500">Roadmap</text>
+  <text x="40" y="1130" font-size="22" font-weight="500" fill="#f0f6fc">Roadmap</text>
   
-  <g transform="translate(40, 1030)">
+  <g transform="translate(40, 1150)">
     <!-- DONE items -->
     <circle cx="10" cy="10" r="5" fill="#10b981"/>
-    <text x="25" y="14" font-size="13">Multi-provider routing</text>
+    <text x="25" y="14" font-size="15" fill="#e6edf3">Multi-provider routing</text>
     
     <circle cx="10" cy="38" r="5" fill="#10b981"/>
-    <text x="25" y="42" font-size="13">Cost-first fallback chain</text>
+    <text x="25" y="42" font-size="15" fill="#e6edf3">Cost-first fallback chain</text>
     
     <circle cx="10" cy="66" r="5" fill="#10b981"/>
-    <text x="25" y="70" font-size="13">OpenAI-compatible API</text>
+    <text x="25" y="70" font-size="15" fill="#e6edf3">OpenAI-compatible API</text>
     
     <circle cx="10" cy="94" r="5" fill="#10b981"/>
-    <text x="25" y="98" font-size="13">Python SDK</text>
+    <text x="25" y="98" font-size="15" fill="#e6edf3">Python SDK</text>
     
     <circle cx="10" cy="122" r="5" fill="#10b981"/>
-    <text x="25" y="126" font-size="13">Prometheus metrics</text>
+    <text x="25" y="126" font-size="15" fill="#e6edf3">Prometheus metrics</text>
     
     <!-- TODO items -->
-    <circle cx="10" cy="150" r="5" fill="#d1d5db"/>
-    <text x="25" y="154" font-size="13">Grafana dashboard</text>
+    <circle cx="10" cy="150" r="5" fill="#8b949e"/>
+    <text x="25" y="154" font-size="15" fill="#e6edf3">Grafana dashboard</text>
     
-    <circle cx="10" cy="178" r="5" fill="#d1d5db"/>
-    <text x="25" y="182" font-size="13">PyPI release (pip install llmhub)</text>
+    <circle cx="10" cy="178" r="5" fill="#8b949e"/>
+    <text x="25" y="182" font-size="15" fill="#e6edf3">PyPI release (pip install llmhub)</text>
     
-    <circle cx="10" cy="206" r="5" fill="#d1d5db"/>
-    <text x="25" y="210" font-size="13">Rate limiting per key</text>
+    <circle cx="10" cy="206" r="5" fill="#8b949e"/>
+    <text x="25" y="210" font-size="15" fill="#e6edf3">Rate limiting per key</text>
   </g>
   
   <!-- SECTION 6: Footer (y: 1220-1260) -->
-  <text x="400" y="1240" text-anchor="middle" font-size="13" fill="#378add">
+  <text x="400" y="1400" text-anchor="middle" font-size="14" fill="#378add">
     Live API · Issues · Discussions
   </text>
 </svg>
