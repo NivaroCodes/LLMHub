@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from typing import List
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from app.core.canonical import CanonicalChatRequest
@@ -75,3 +76,23 @@ async def create_chat_completion(payload: OpenAIChatCompletionRequest, request: 
             total_tokens=prompt_tokens + completion_tokens,
         ),
     )
+
+
+@router.get("/models")
+async def list_models():
+    """List available models (OpenAI-compatible)"""
+    models = [
+        {"id": "gpt-4o", "object": "model", "owned_by": "openai"},
+        {"id": "gpt-4o-mini", "object": "model", "owned_by": "openai"},
+        {"id": "gpt-4-turbo", "object": "model", "owned_by": "openai"},
+        {"id": "gemini-2.0-flash", "object": "model", "owned_by": "google"},
+        {"id": "gemini-1.5-flash", "object": "model", "owned_by": "google"},
+        {"id": "llama3:8b", "object": "model", "owned_by": "ollama"},
+        {"id": "llama3:70b", "object": "model", "owned_by": "ollama"},
+        {"id": "mistral:7b", "object": "model", "owned_by": "ollama"},
+    ]
+    
+    return {
+        "object": "list",
+        "data": models
+    }
