@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/readme-preview.svg" width="700" />
+  <img src="assets/LLMHub-icon.png" width="700" />
 </p>
 
 <h1 align="center">LLMHub</h1>
