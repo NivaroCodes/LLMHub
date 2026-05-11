@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.clients.redis_client import close_redis, init_redis
 from app.db.database import close_db, init_db
@@ -19,7 +20,7 @@ from app.services.llm_services import get_llm_service
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    print("SQLite database initialized")
+    print("PostgreSQL database initialized")
 
     app.state.redis = await init_redis()
     print("Redis client initialized")
@@ -48,8 +49,8 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 @app.get("/")
-def root():
-    return {"service": "LLMHub", "version": "0.1.0", "docs": "/docs"}
+async def root():
+    return FileResponse("app/static/index.html")
 
 @app.get("/hi")
 async def great():
